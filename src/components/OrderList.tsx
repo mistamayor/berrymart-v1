@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { SalesOrder, OrderItem } from "../types";
+import React, { useState, useEffect } from "react";
+import { SalesOrder, OrderItem, TransportVehicle } from "../types";
 import { db } from "../lib/database";
 import { auth } from "../lib/auth";
 import {
@@ -46,6 +46,20 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | "all">("all");
   const [approvalComment, setApprovalComment] = useState("");
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(
+    null
+  );
+  const [vehicles, setVehicles] = useState<TransportVehicle[]>([]);
+
+  useEffect(() => {
+    if (showDispatchModal) {
+      setDispatchedBy(`${currentUser.first_name} ${currentUser.last_name}`);
+      setVehicles(
+        db.getAllTransportVehicles().filter((v) => v.status === "active")
+      );
+      setSelectedVehicleId(null);
+    }
+  }, [showDispatchModal, currentUser]);
 
   // Filtered orders logic
   const filteredOrders = orders.filter((order) => {
@@ -156,18 +170,22 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   const handleDispatch = () => {
     if (!selectedOrder) return;
-
-    if (!dispatchedBy.trim() || !trackingNumber.trim()) {
-      alert("Please fill in all dispatch details");
+    if (!dispatchedBy.trim() || !trackingNumber.trim() || !selectedVehicleId) {
+      alert("Please fill in all dispatch details and select a vehicle");
       return;
     }
-
     try {
-      db.dispatchOrder(selectedOrder.id, dispatchedBy, trackingNumber);
+      db.dispatchOrder(
+        selectedOrder.id,
+        dispatchedBy,
+        trackingNumber,
+        selectedVehicleId
+      );
       setShowDispatchModal(false);
       setSelectedOrder(null);
       setDispatchedBy("");
       setTrackingNumber("");
+      setSelectedVehicleId(null);
       onStatusChange();
     } catch (error) {
       console.error("Error dispatching order:", error);
@@ -364,7 +382,11 @@ export const OrderList: React.FC<OrderListProps> = ({
                 <DollarSign className="w-4 h-4 text-gray-400" />
                 <div>
                   <p className="font-medium text-gray-900">
-                    ${order.total_amount.toFixed(2)}
+                    ₦
+                    {order.total_amount.toLocaleString("en-NG", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                   <p className="text-gray-600">Total Amount</p>
                 </div>
@@ -548,13 +570,21 @@ export const OrderList: React.FC<OrderListProps> = ({
                           {item.product_name}
                         </td>
                         <td className="px-4 py-2 text-right">
-                          ${item.unit_price.toFixed(2)}
+                          ₦
+                          {item.unit_price.toLocaleString("en-NG", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </td>
                         <td className="px-4 py-2 text-right">
                           {item.quantity}
                         </td>
                         <td className="px-4 py-2 text-right font-semibold">
-                          ${item.total_price.toFixed(2)}
+                          ₦
+                          {item.total_price.toLocaleString("en-NG", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </td>
                       </tr>
                     ))}
@@ -565,7 +595,11 @@ export const OrderList: React.FC<OrderListProps> = ({
               <div className="flex justify-end items-center text-lg font-bold mb-6">
                 <span className="mr-2">Total Amount:</span>
                 <span className="text-blue-600">
-                  ${selectedOrder.total_amount.toFixed(2)}
+                  ₦
+                  {selectedOrder.total_amount.toLocaleString("en-NG", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </span>
               </div>
 
@@ -643,6 +677,36 @@ export const OrderList: React.FC<OrderListProps> = ({
                   </div>
                 </div>
               )}
+              {/* Approve/Reject Buttons for Pending Orders */}
+              {selectedOrder.status === "pending" &&
+                auth.hasPermission(["Admin", "Manager"]) && (
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      onClick={() => initiateApproval(selectedOrder, "approve")}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => initiateApproval(selectedOrder, "reject")}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              {/* Dispatch Button for Approved Orders */}
+              {selectedOrder.status === "approved" &&
+                auth.hasPermission(["Admin", "Manager", "Inventory"]) && (
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      onClick={() => initiateDispatch(selectedOrder)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Dispatch
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         </div>
@@ -675,7 +739,11 @@ export const OrderList: React.FC<OrderListProps> = ({
                     {selectedOrder.customer_name}
                   </p>
                   <p className="text-sm text-gray-600">
-                    ${selectedOrder.total_amount.toFixed(2)}
+                    ₦
+                    {selectedOrder.total_amount.toLocaleString("en-NG", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
 
@@ -686,9 +754,8 @@ export const OrderList: React.FC<OrderListProps> = ({
                   <input
                     type="text"
                     value={dispatchedBy}
-                    onChange={(e) => setDispatchedBy(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter your name"
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-200 bg-gray-100 rounded-lg text-gray-500 cursor-not-allowed"
                   />
                 </div>
 
@@ -703,6 +770,34 @@ export const OrderList: React.FC<OrderListProps> = ({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter tracking number"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Van/Truck *
+                  </label>
+                  <select
+                    value={selectedVehicleId ?? ""}
+                    onChange={(e) =>
+                      setSelectedVehicleId(Number(e.target.value))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option
+                      value=""
+                      disabled
+                    >
+                      Select a vehicle
+                    </option>
+                    {vehicles.map((vehicle) => (
+                      <option
+                        key={vehicle.id}
+                        value={vehicle.id}
+                      >
+                        {vehicle.name} ({vehicle.type}, {vehicle.license_plate})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex space-x-3">

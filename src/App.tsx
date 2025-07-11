@@ -229,7 +229,7 @@ function App() {
       (activeView !== "orders" ||
         auth.hasPermission(["Admin", "Manager", "Sales"])) &&
       (activeView !== "customers" ||
-        auth.hasPermission(["Admin", "Manager", "Sales"])) &&
+        auth.hasPermission(["Admin", "Management", "Manager"])) &&
       (activeView !== "products" ||
         auth.hasPermission(["Admin", "Manager", "Inventory"]))
     );

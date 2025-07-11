@@ -40,14 +40,30 @@ export const CustomerList: React.FC<CustomerListProps> = ({
   ]);
 
   // Filter customers based on search term
-  const filteredCustomers = customers.filter(
-    (customer) =>
+  const filteredCustomers = customers.filter((customer) => {
+    // Helper to check if any address field matches
+    const addressMatch = customer.addresses.some((addr) =>
+      [addr.address, addr.city, addr.state, addr.postal_code, addr.country]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+    );
+    return (
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      addressMatch ||
       customer.type.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    );
+  });
+
+  // Helper to get display address (default or first)
+  const getDisplayAddress = (customer: Customer) => {
+    if (!customer.addresses || customer.addresses.length === 0) return "-";
+    const def = customer.addresses.find((a) => a.is_default);
+    const addr = def || customer.addresses[0];
+    return `${addr.address}, ${addr.city}, ${addr.state}, ${addr.country}`;
+  };
 
   const getCustomerTypeColor = (type: string) => {
     switch (type) {
@@ -251,7 +267,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                 </div>
                 <div className="flex items-center space-x-2 text-sm text-gray-600">
                   <MapPin className="w-4 h-4" />
-                  <span>{customer.address}</span>
+                  <span>{getDisplayAddress(customer)}</span>
                 </div>
               </div>
 
@@ -336,9 +352,9 @@ export const CustomerList: React.FC<CustomerListProps> = ({
                     <td className="px-6 py-4">
                       <div
                         className="text-sm text-gray-900 max-w-xs truncate"
-                        title={customer.address}
+                        title={getDisplayAddress(customer)}
                       >
-                        {customer.address}
+                        {getDisplayAddress(customer)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

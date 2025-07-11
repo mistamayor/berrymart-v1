@@ -241,6 +241,25 @@ class DatabaseManager {
     return newCustomer;
   }
 
+  updateCustomer(
+    id: number,
+    updates: Partial<Omit<Customer, 'id' | 'created_at' | 'last_modified_at' | 'last_modified_by' | 'last_modified_changes'>> & {
+      last_modified_by: string;
+      last_modified_changes: string;
+    }
+  ): Customer {
+    const customerIndex = this.customers.findIndex(c => c.id === id);
+    if (customerIndex === -1) throw new Error('Customer not found');
+    this.customers[customerIndex] = {
+      ...this.customers[customerIndex],
+      ...updates,
+      last_modified_at: new Date().toISOString(),
+      last_modified_by: updates.last_modified_by,
+      last_modified_changes: updates.last_modified_changes
+    };
+    return this.customers[customerIndex];
+  }
+
   // Product methods
   getAllProducts(): Product[] {
     return [...this.products].sort((a, b) => 
@@ -321,7 +340,7 @@ class DatabaseManager {
     return true;
   }
 
-  dispatchOrder(orderId: number, dispatchedBy: string, trackingNumber: string): boolean {
+  dispatchOrder(orderId: number, dispatchedBy: string, trackingNumber: string, vehicleId: number): boolean {
     const orderIndex = this.orders.findIndex(order => order.id === orderId);
     if (orderIndex === -1) return false;
 
@@ -330,7 +349,8 @@ class DatabaseManager {
       status: 'dispatched',
       dispatched_at: new Date().toISOString(),
       dispatched_by: dispatchedBy,
-      tracking_number: trackingNumber
+      tracking_number: trackingNumber,
+      dispatched_vehicle_id: vehicleId
     };
 
     return true;

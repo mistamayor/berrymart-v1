@@ -16,6 +16,9 @@ export interface Customer {
   addresses: CustomerAddress[];
   type: 'retail' | 'wholesale' | 'open_market';
   created_at: string;
+  last_modified_at?: string;
+  last_modified_by?: string;
+  last_modified_changes?: string;
 }
 
 export interface Product {
@@ -45,6 +48,7 @@ export interface SalesOrder {
   approved_by?: string;
   dispatched_at?: string;
   dispatched_by?: string;
+  dispatched_vehicle_id?: number;
   delivered_at?: string;
   pod_image?: string;
   tracking_number?: string;
