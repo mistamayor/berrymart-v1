@@ -15,7 +15,7 @@ interface ProfilePageProps {
 }
 
 const getInitials = (first: string, last: string) => {
-  return (first[0] || "") + (last[0] || "");
+  return ((first || "")[0] || "") + ((last || "")[0] || "");
 };
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ user }) => {
