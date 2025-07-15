@@ -292,7 +292,7 @@ const TransportList: React.FC<TransportListProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | "all">("all");
   const [typeFilter, setTypeFilter] = useState<string | "all">("all");
-  const [view, setView] = useState<"card" | "list">("card");
+  const [view, setView] = useState<"card" | "list">("list");
   const [showForm, setShowForm] = useState(false);
 
   const canEditTransport = auth.hasPermission([
@@ -320,15 +320,35 @@ const TransportList: React.FC<TransportListProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center">
             <Truck className="w-7 h-7 mr-2 text-blue-600" />
             Transport Vehicles
           </h2>
+          <p className="text-gray-600 mt-1">
+            Manage delivery vehicles and assignments
+          </p>
         </div>
+
+        {canEditTransport && (
+          <button
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            onClick={() => setShowForm(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Transport
+          </button>
+        )}
+      </div>
+
+      {/* Filters and View Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center space-x-4">
+          {/* Search */}
           <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
               value={searchTerm}
@@ -336,9 +356,6 @@ const TransportList: React.FC<TransportListProps> = ({
               className="pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
               placeholder="Search by name, license, or agent..."
             />
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-              <Search className="w-4 h-4" />
-            </span>
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm("")}
@@ -348,18 +365,34 @@ const TransportList: React.FC<TransportListProps> = ({
               </button>
             )}
           </div>
+
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="retired">Retired</option>
+          </select>
+
+          {/* Type Filter */}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Types</option>
+            <option value="van">Van</option>
+            <option value="truck">Truck</option>
+          </select>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          {/* View Toggle */}
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setView("card")}
-              className={`p-2 rounded-md transition-colors ${
-                view === "card"
-                  ? "bg-white text-blue-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-              title="Card View"
-            >
-              <GridIcon className="w-4 h-4" />
-            </button>
             <button
               onClick={() => setView("list")}
               className={`p-2 rounded-md transition-colors ${
@@ -371,17 +404,68 @@ const TransportList: React.FC<TransportListProps> = ({
             >
               <ListIcon className="w-4 h-4" />
             </button>
-          </div>
-          {canEditTransport && (
             <button
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              onClick={() => setShowForm(true)}
+              onClick={() => setView("card")}
+              className={`p-2 rounded-md transition-colors ${
+                view === "card"
+                  ? "bg-white text-blue-600 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Card View"
             >
-              <Plus className="w-4 h-4 mr-2" /> Add New Transport
+              <GridIcon className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
       </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Vehicles</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredVehicles.length}</p>
+            </div>
+            <Truck className="w-8 h-8 text-gray-400" />
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Active</p>
+              <p className="text-2xl font-bold text-green-600">
+                {filteredVehicles.filter(v => v.status === 'active').length}
+              </p>
+            </div>
+            <CheckCircle className="w-8 h-8 text-green-500" />
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Maintenance</p>
+              <p className="text-2xl font-bold text-yellow-600">
+                {filteredVehicles.filter(v => v.status === 'maintenance').length}
+              </p>
+            </div>
+            <Wrench className="w-8 h-8 text-yellow-500" />
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Retired</p>
+              <p className="text-2xl font-bold text-gray-600">
+                {filteredVehicles.filter(v => v.status === 'retired').length}
+              </p>
+            </div>
+            <XCircle className="w-8 h-8 text-gray-400" />
+          </div>
+        </div>
+      </div>
+
+      {/* Add Transport Form Modal */}
       {showForm && (
         <TransportForm
           users={users}
@@ -389,134 +473,209 @@ const TransportList: React.FC<TransportListProps> = ({
           onAdded={onVehicleChange}
         />
       )}
-      {view === "card" ? (
+
+      {/* No vehicles message */}
+      {filteredVehicles.length === 0 ? (
+        <div className="text-center py-12">
+          <Truck className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No vehicles found
+          </h3>
+          <p className="text-gray-500">
+            {vehicles.length === 0 
+              ? "Add your first transport vehicle to get started."
+              : "Try adjusting your search or filter criteria."
+            }
+          </p>
+        </div>
+      ) : view === "list" ? (
+        /* List View */
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Vehicle
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    License Plate
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Capacity
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Assigned Agent
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Notes
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredVehicles.map((vehicle) => {
+                  const agent = users.find(
+                    (u) => u.id === vehicle.assigned_agent_id
+                  );
+                  return (
+                    <tr
+                      key={vehicle.id}
+                      className="hover:bg-gray-50"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                            <Truck className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {vehicle.name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              ID: {vehicle.id}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 capitalize">
+                          {vehicle.type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                        {vehicle.license_plate}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {vehicle.capacity.toLocaleString()} kg
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          vehicle.status === 'active' 
+                            ? 'bg-green-100 text-green-800'
+                            : vehicle.status === 'maintenance'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {getStatusIcon(vehicle.status)}
+                          <span className="ml-1 capitalize">{vehicle.status}</span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {agent ? (
+                          <div className="flex items-center">
+                            <UserIcon className="w-4 h-4 text-gray-400 mr-2" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {agent.first_name} {agent.last_name}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {agent.email}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic text-sm">
+                            No agent assigned
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 max-w-xs">
+                          {vehicle.notes || (
+                            <span className="text-gray-400 italic">-</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Card View */
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredVehicles.map((vehicle) => {
             const agent = users.find((u) => u.id === vehicle.assigned_agent_id);
             return (
               <div
                 key={vehicle.id}
-                className="bg-white rounded-xl shadow p-6 border border-gray-200 flex flex-col gap-3"
+                className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 hover:shadow-md transition-shadow"
               >
-                <div className="flex items-center gap-3 mb-2">
-                  {getStatusIcon(vehicle.status)}
-                  <span className="font-bold text-lg text-gray-900">
-                    {vehicle.name}
-                  </span>
-                  <span className="ml-auto px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 capitalize">
-                    {vehicle.type}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Truck className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">{vehicle.name}</h3>
+                      <p className="text-sm text-gray-600">ID: {vehicle.id}</p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    vehicle.status === 'active' 
+                      ? 'bg-green-100 text-green-800'
+                      : vehicle.status === 'maintenance'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {getStatusIcon(vehicle.status)}
+                    <span className="ml-1 capitalize">{vehicle.status}</span>
                   </span>
                 </div>
-                <div className="flex flex-col gap-1 text-sm text-gray-700">
-                  <div>
-                    <span className="font-semibold">License Plate:</span>{" "}
-                    {vehicle.license_plate}
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <span className="font-medium">Type:</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 capitalize">
+                      {vehicle.type}
+                    </span>
                   </div>
-                  <div>
-                    <span className="font-semibold">Capacity:</span>{" "}
-                    {vehicle.capacity} kg
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <span className="font-medium">License:</span>
+                    <span className="font-mono">{vehicle.license_plate}</span>
                   </div>
-                  <div>
-                    <span className="font-semibold">Status:</span>{" "}
-                    {vehicle.status}
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <span className="font-medium">Capacity:</span>
+                    <span>{vehicle.capacity.toLocaleString()} kg</span>
                   </div>
                   {vehicle.notes && (
-                    <div>
-                      <span className="font-semibold">Notes:</span>{" "}
-                      {vehicle.notes}
+                    <div className="flex items-start space-x-2 text-sm text-gray-600">
+                      <span className="font-medium">Notes:</span>
+                      <span>{vehicle.notes}</span>
                     </div>
                   )}
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <UserIcon className="w-4 h-4 text-blue-500" />
-                  {agent ? (
-                    <span>
-                      {agent.first_name} {agent.last_name}{" "}
-                      <span className="text-xs text-gray-500">
-                        ({agent.email})
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-gray-400 italic">
-                      No delivery agent assigned
-                    </span>
-                  )}
+
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <UserIcon className="w-4 h-4 text-gray-400" />
+                    <div>
+                      {agent ? (
+                        <>
+                          <p className="text-sm font-medium text-gray-900">
+                            {agent.first_name} {agent.last_name}
+                          </p>
+                          <p className="text-xs text-gray-500">{agent.email}</p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">
+                          No delivery agent assigned
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           })}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white rounded-xl shadow border border-gray-200">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Name
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Type
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  License Plate
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Capacity
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Status
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Agent
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                  Notes
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredVehicles.map((vehicle) => {
-                const agent = users.find(
-                  (u) => u.id === vehicle.assigned_agent_id
-                );
-                return (
-                  <tr
-                    key={vehicle.id}
-                    className="border-t"
-                  >
-                    <td className="px-4 py-2 font-medium text-gray-900">
-                      {vehicle.name}
-                    </td>
-                    <td className="px-4 py-2 capitalize">{vehicle.type}</td>
-                    <td className="px-4 py-2">{vehicle.license_plate}</td>
-                    <td className="px-4 py-2">{vehicle.capacity} kg</td>
-                    <td className="px-4 py-2 capitalize flex items-center gap-2">
-                      {getStatusIcon(vehicle.status)} {vehicle.status}
-                    </td>
-                    <td className="px-4 py-2">
-                      {agent ? (
-                        <span>
-                          {agent.first_name} {agent.last_name}{" "}
-                          <span className="text-xs text-gray-500">
-                            ({agent.email})
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 italic">
-                          No delivery agent assigned
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      {vehicle.notes || (
-                        <span className="text-gray-300">-</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       )}
     </div>
