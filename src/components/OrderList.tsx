@@ -513,6 +513,14 @@ export const OrderList: React.FC<OrderListProps> = ({
                   </tr>
                   <tr className="bg-gray-50">
                     <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
+                      Ship To
+                    </th>
+                    <td className="px-4 py-2 border-b border-gray-200">
+                      {selectedOrder.ship_to_address}
+                    </td>
+                  </tr>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
                       Created By
                     </th>
                     <td className="px-4 py-2 border-b border-gray-200">

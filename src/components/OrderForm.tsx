@@ -43,6 +43,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [selectedShipToAddress, setSelectedShipToAddress] = useState<CustomerAddress | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -102,6 +103,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     setSelectedCustomer(customer);
     setCustomerSearchTerm(customer.name);
     setShowCustomerDropdown(false);
+    // Auto-select default address or first address
+    const defaultAddress = customer.addresses.find(addr => addr.is_default);
+    setSelectedShipToAddress(defaultAddress || customer.addresses[0] || null);
     setErrors((prev) => ({ ...prev, customer: "" }));
   };
 
@@ -118,6 +122,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       !selectedCustomer.name.toLowerCase().includes(value.toLowerCase())
     ) {
       setSelectedCustomer(null);
+      setSelectedShipToAddress(null);
     }
   };
 
@@ -161,13 +166,15 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm() || !selectedCustomer) return;
+    if (!validateForm() || !selectedCustomer || !selectedShipToAddress) return;
 
     try {
       const orderData: Omit<SalesOrder, "id" | "created_at"> = {
         customer_id: selectedCustomer.id,
         customer_name: selectedCustomer.name,
         customer_type: selectedCustomer.type,
+        ship_to_address_id: selectedShipToAddress.id,
+        ship_to_address: `${selectedShipToAddress.address}, ${selectedShipToAddress.city}, ${selectedShipToAddress.state}, ${selectedShipToAddress.country} ${selectedShipToAddress.postal_code}`,
         total_amount: getTotalAmount(),
         status: "pending",
         notes,
@@ -298,6 +305,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                       onClick={() => {
                         setSelectedCustomer(null);
                         setCustomerSearchTerm("");
+                        setSelectedShipToAddress(null);
                       }}
                       className="text-blue-400 hover:text-blue-600"
                     >
@@ -332,6 +340,69 @@ export const OrderForm: React.FC<OrderFormProps> = ({
             {/* Only show product selection and below if customer is selected */}
             {selectedCustomer && (
               <>
+                {/* Ship-To Address Selection */}
+                {selectedCustomer.addresses.length > 1 && (
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Ship-To Address
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedCustomer.addresses.map((address) => (
+                        <div
+                          key={address.id}
+                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                            selectedShipToAddress?.id === address.id
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          onClick={() => setSelectedShipToAddress(address)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="radio"
+                                checked={selectedShipToAddress?.id === address.id}
+                                onChange={() => setSelectedShipToAddress(address)}
+                                className="text-blue-600 focus:ring-blue-500"
+                              />
+                              <div>
+                                <div className="font-medium text-gray-900">
+                                  {address.address}
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  {address.city}, {address.state}, {address.country} {address.postal_code}
+                                </div>
+                              </div>
+                            </div>
+                            {address.is_default && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Single Address Display */}
+                {selectedCustomer.addresses.length === 1 && (
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      Ship-To Address
+                    </h3>
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                      <div className="font-medium text-gray-900">
+                        {selectedCustomer.addresses[0].address}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {selectedCustomer.addresses[0].city}, {selectedCustomer.addresses[0].state}, {selectedCustomer.addresses[0].country} {selectedCustomer.addresses[0].postal_code}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Product Selection */}
                 <div className="border-t pt-6">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -520,6 +591,17 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
                 {/* Total */}
                 <div className="border-t pt-6">
+                  {/* Selected Ship-To Address Summary */}
+                  {selectedShipToAddress && (
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h4 className="font-medium text-blue-900 mb-1">Ship To:</h4>
+                      <div className="text-sm text-blue-800">
+                        <div>{selectedShipToAddress.address}</div>
+                        <div>{selectedShipToAddress.city}, {selectedShipToAddress.state}, {selectedShipToAddress.country} {selectedShipToAddress.postal_code}</div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex justify-between items-center text-xl font-bold">
                     <span>Total Amount:</span>
                     <span className="text-blue-600">
@@ -545,7 +627,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={!selectedCustomer}
+                disabled={!selectedCustomer || !selectedShipToAddress}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Create Order

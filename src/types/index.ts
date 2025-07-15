@@ -39,6 +39,8 @@ export interface SalesOrder {
   customer_id: number;
   customer_name: string;
   customer_type: string;
+  ship_to_address_id: number;
+  ship_to_address: string;
   total_amount: number;
   status: 'pending' | 'approved' | 'rejected' | 'dispatched' | 'delivered';
   created_at: string;
