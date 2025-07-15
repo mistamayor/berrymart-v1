@@ -1,37 +1,48 @@
-import React, { useState } from 'react';
-import { Product } from '../types';
-import { db } from '../lib/database';
-import { Package, DollarSign, Hash, FileText, Boxes } from 'lucide-react';
+import React, { useState } from "react";
+import { Product } from "../types";
+import { db } from "../lib/database";
+import { Package, DollarSign, Hash, FileText, Boxes } from "lucide-react";
 
 interface ProductFormProps {
   onProductAdded: (product: Product) => void;
   onClose: () => void;
 }
 
-export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClose }) => {
+export const ProductForm: React.FC<ProductFormProps> = ({
+  onProductAdded,
+  onClose,
+}) => {
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    sku: '',
-    base_price: '',
-    retail_price: '',
-    wholesale_price: '',
-    open_market_price: '',
-    stock_quantity: ''
+    name: "",
+    description: "",
+    sku: "",
+    base_price: "",
+    retail_price: "",
+    wholesale_price: "",
+    open_market_price: "",
+    stock_quantity: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
-    if (!formData.name.trim()) newErrors.name = 'Product name is required';
-    if (!formData.sku.trim()) newErrors.sku = 'SKU is required';
-    if (!formData.base_price || parseFloat(formData.base_price) <= 0) newErrors.base_price = 'Valid base price is required';
-    if (!formData.retail_price || parseFloat(formData.retail_price) <= 0) newErrors.retail_price = 'Valid retail price is required';
-    if (!formData.wholesale_price || parseFloat(formData.wholesale_price) <= 0) newErrors.wholesale_price = 'Valid wholesale price is required';
-    if (!formData.open_market_price || parseFloat(formData.open_market_price) <= 0) newErrors.open_market_price = 'Valid open market price is required';
-    if (!formData.stock_quantity || parseInt(formData.stock_quantity) < 0) newErrors.stock_quantity = 'Valid stock quantity is required';
+
+    if (!formData.name.trim()) newErrors.name = "Product name is required";
+    if (!formData.sku.trim()) newErrors.sku = "SKU is required";
+    if (!formData.base_price || parseFloat(formData.base_price) <= 0)
+      newErrors.base_price = "Valid base price is required";
+    if (!formData.retail_price || parseFloat(formData.retail_price) <= 0)
+      newErrors.retail_price = "Valid retail price is required";
+    if (!formData.wholesale_price || parseFloat(formData.wholesale_price) <= 0)
+      newErrors.wholesale_price = "Valid wholesale price is required";
+    if (
+      !formData.open_market_price ||
+      parseFloat(formData.open_market_price) <= 0
+    )
+      newErrors.open_market_price = "Valid open market price is required";
+    if (!formData.stock_quantity || parseInt(formData.stock_quantity) < 0)
+      newErrors.stock_quantity = "Valid stock quantity is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -49,21 +60,23 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
           retail_price: parseFloat(formData.retail_price),
           wholesale_price: parseFloat(formData.wholesale_price),
           open_market_price: parseFloat(formData.open_market_price),
-          stock_quantity: parseInt(formData.stock_quantity)
+          stock_quantity: parseInt(formData.stock_quantity),
         });
         onProductAdded(product);
         onClose();
       } catch (error) {
-        console.error('Error creating product:', error);
+        console.error("Error creating product:", error);
       }
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
@@ -84,7 +97,10 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -98,12 +114,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     value={formData.name}
                     onChange={handleInputChange}
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.name ? 'border-red-500' : 'border-gray-300'
+                      errors.name ? "border-red-500" : "border-gray-300"
                     }`}
                     placeholder="Enter product name"
                   />
                 </div>
-                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                {errors.name && (
+                  <p className="text-red-500 text-sm mt-1">{errors.name}</p>
+                )}
               </div>
 
               <div>
@@ -118,12 +136,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     value={formData.sku}
                     onChange={handleInputChange}
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.sku ? 'border-red-500' : 'border-gray-300'
+                      errors.sku ? "border-red-500" : "border-gray-300"
                     }`}
                     placeholder="Enter SKU"
                   />
                 </div>
-                {errors.sku && <p className="text-red-500 text-sm mt-1">{errors.sku}</p>}
+                {errors.sku && (
+                  <p className="text-red-500 text-sm mt-1">{errors.sku}</p>
+                )}
               </div>
             </div>
 
@@ -147,7 +167,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Base Price
+                  Base Price (₦)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -158,17 +178,21 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     onChange={handleInputChange}
                     step="0.01"
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.base_price ? 'border-red-500' : 'border-gray-300'
+                      errors.base_price ? "border-red-500" : "border-gray-300"
                     }`}
-                    placeholder="0.00"
+                    placeholder="0.00 (₦)"
                   />
                 </div>
-                {errors.base_price && <p className="text-red-500 text-sm mt-1">{errors.base_price}</p>}
+                {errors.base_price && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.base_price}
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Retail Price
+                  Retail Price (₦)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -179,17 +203,21 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     onChange={handleInputChange}
                     step="0.01"
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.retail_price ? 'border-red-500' : 'border-gray-300'
+                      errors.retail_price ? "border-red-500" : "border-gray-300"
                     }`}
-                    placeholder="0.00"
+                    placeholder="0.00 (₦)"
                   />
                 </div>
-                {errors.retail_price && <p className="text-red-500 text-sm mt-1">{errors.retail_price}</p>}
+                {errors.retail_price && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.retail_price}
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Wholesale Price
+                  Wholesale Price (₦)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -200,17 +228,23 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     onChange={handleInputChange}
                     step="0.01"
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.wholesale_price ? 'border-red-500' : 'border-gray-300'
+                      errors.wholesale_price
+                        ? "border-red-500"
+                        : "border-gray-300"
                     }`}
-                    placeholder="0.00"
+                    placeholder="0.00 (₦)"
                   />
                 </div>
-                {errors.wholesale_price && <p className="text-red-500 text-sm mt-1">{errors.wholesale_price}</p>}
+                {errors.wholesale_price && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.wholesale_price}
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Open Market Price
+                  Open Market Price (₦)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -221,12 +255,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                     onChange={handleInputChange}
                     step="0.01"
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.open_market_price ? 'border-red-500' : 'border-gray-300'
+                      errors.open_market_price
+                        ? "border-red-500"
+                        : "border-gray-300"
                     }`}
-                    placeholder="0.00"
+                    placeholder="0.00 (₦)"
                   />
                 </div>
-                {errors.open_market_price && <p className="text-red-500 text-sm mt-1">{errors.open_market_price}</p>}
+                {errors.open_market_price && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {errors.open_market_price}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -242,12 +282,16 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onProductAdded, onClos
                   value={formData.stock_quantity}
                   onChange={handleInputChange}
                   className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.stock_quantity ? 'border-red-500' : 'border-gray-300'
+                    errors.stock_quantity ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="0"
                 />
               </div>
-              {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity}</p>}
+              {errors.stock_quantity && (
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.stock_quantity}
+                </p>
+              )}
             </div>
 
             <div className="flex space-x-3 pt-4">

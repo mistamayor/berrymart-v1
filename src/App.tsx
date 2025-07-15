@@ -229,7 +229,7 @@ function App() {
       (activeView !== "orders" ||
         auth.hasPermission(["Admin", "Manager", "Sales"])) &&
       (activeView !== "customers" ||
-        auth.hasPermission(["Admin", "Manager", "Sales"])) &&
+        auth.hasPermission(["Admin", "Management", "Manager"])) &&
       (activeView !== "products" ||
         auth.hasPermission(["Admin", "Manager", "Inventory"]))
     );
@@ -432,12 +432,12 @@ function App() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation */}
         <nav className="mb-8">
-          <div className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm">
+          <div className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm overflow-x-auto whitespace-nowrap scrollbar-hide">
             {navigationItems.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveView(key as ActiveView)}
-                className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors flex-shrink-0 ${
                   activeView === key
                     ? "bg-blue-600 text-white"
                     : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"

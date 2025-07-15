@@ -14,6 +14,8 @@ import {
   Truck,
   MapPin as DeliveredIcon,
 } from "lucide-react";
+import { auth } from "../lib/auth";
+import { CustomerForm } from "./CustomerForm";
 
 interface CustomerViewProps {
   customer: Customer;
@@ -66,12 +68,34 @@ const formatDate = (dateString: string) => {
 
 const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [customerData, setCustomerData] = useState<Customer>(customer);
 
   useEffect(() => {
     // Get all orders for this customer
     const allOrders = db.getAllOrders();
     setOrders(allOrders.filter((o) => o.customer_id === customer.id));
   }, [customer.id]);
+
+  useEffect(() => {
+    setCustomerData(customer);
+  }, [customer]);
+
+  const canEditCustomer = auth.hasPermission([
+    "Admin",
+    "Management",
+    "Manager",
+  ]);
+
+  const handleEditCustomer = () => {
+    setShowEditForm(true);
+  };
+
+  const handleCustomerUpdated = (updatedCustomer: Customer) => {
+    setCustomerData(updatedCustomer);
+    setShowEditForm(false);
+    // Optionally, trigger a parent refresh if needed
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -82,12 +106,22 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
               <User className="w-7 h-7 mr-2 text-blue-600" />
               Customer Details
             </h3>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              {canEditCustomer && (
+                <button
+                  onClick={handleEditCustomer}
+                  className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors font-semibold"
+                >
+                  Edit
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           {/* Customer Info */}
@@ -104,9 +138,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
                 <Phone className="w-4 h-4" /> {customer.phone}
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <MapPin className="w-4 h-4" /> {customer.address}
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
                 <UserCheck className="w-4 h-4" />
                 <span className="capitalize">
                   {customer.type.replace("_", " ")}
@@ -120,6 +151,84 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
               <div className="font-semibold text-gray-700">Customer ID:</div>
               <div className="text-lg font-mono text-gray-900">
                 {customer.id}
+              </div>
+            </div>
+          </div>
+
+          {/* Ship-To Addresses */}
+          <div className="mb-8">
+            <h4 className="font-semibold text-gray-900 mb-2">
+              Ship-To Addresses
+            </h4>
+            {customer.addresses.length === 0 ? (
+              <div className="text-gray-500 text-sm mb-4">
+                No addresses for this customer.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {customer.addresses.map((addr) => (
+                  <div
+                    key={addr.id}
+                    className="p-4 border rounded-lg bg-gray-50 relative"
+                  >
+                    {addr.is_default && (
+                      <span className="absolute top-2 right-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
+                        Default
+                      </span>
+                    )}
+                    <div className="font-semibold text-gray-800">
+                      {addr.address}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {addr.city}, {addr.state}, {addr.country}{" "}
+                      {addr.postal_code}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Customer Sales Summary */}
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-900 mb-2">Sales Summary</h4>
+            <div className="flex gap-6">
+              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                <div className="text-xs text-gray-500">YTD Sales</div>
+                <div className="text-lg font-bold text-green-700">
+                  ₦
+                  {orders
+                    .filter(
+                      (o) =>
+                        new Date(o.created_at).getFullYear() ===
+                        new Date().getFullYear()
+                    )
+                    .reduce((sum, o) => sum + o.total_amount, 0)
+                    .toLocaleString("en-NG", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                <div className="text-xs text-gray-500">MTD Sales</div>
+                <div className="text-lg font-bold text-blue-700">
+                  ₦
+                  {orders
+                    .filter((o) => {
+                      const now = new Date();
+                      const d = new Date(o.created_at);
+                      return (
+                        d.getFullYear() === now.getFullYear() &&
+                        d.getMonth() === now.getMonth()
+                      );
+                    })
+                    .reduce((sum, o) => sum + o.total_amount, 0)
+                    .toLocaleString("en-NG", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                </div>
               </div>
             </div>
           </div>
@@ -162,7 +271,11 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
                         {formatDate(order.created_at)}
                       </td>
                       <td className="px-4 py-2 text-right">
-                        ${order.total_amount.toFixed(2)}
+                        ₦
+                        {order.total_amount.toLocaleString("en-NG", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
                       <td className="px-4 py-2">
                         <span
@@ -179,6 +292,14 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {showEditForm && (
+            <CustomerForm
+              onCustomerAdded={handleCustomerUpdated}
+              onClose={() => setShowEditForm(false)}
+              customer={customerData}
+            />
           )}
         </div>
       </div>

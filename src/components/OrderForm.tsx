@@ -392,11 +392,14 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                           type="text"
                           value={
                             selectedProduct && selectedCustomer
-                              ? `$${getPrice(
+                              ? `₦${getPrice(
                                   selectedProduct,
                                   selectedCustomer.type
-                                ).toFixed(2)}`
-                              : "$0.00"
+                                ).toLocaleString("en-NG", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : "₦0.00"
                           }
                           readOnly
                           className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
@@ -437,7 +440,12 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                               {item.product.name}
                             </h4>
                             <p className="text-sm text-gray-600">
-                              ${item.unitPrice.toFixed(2)} each
+                              ₦
+                              {item.unitPrice.toLocaleString("en-NG", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              each
                             </p>
                           </div>
 
@@ -473,7 +481,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({
 
                           <div className="flex items-center space-x-3">
                             <span className="font-medium text-gray-900">
-                              ${item.totalPrice.toFixed(2)}
+                              ₦
+                              {item.totalPrice.toLocaleString("en-NG", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </span>
                             <button
                               type="button"
@@ -511,7 +523,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   <div className="flex justify-between items-center text-xl font-bold">
                     <span>Total Amount:</span>
                     <span className="text-blue-600">
-                      ${getTotalAmount().toFixed(2)}
+                      ₦
+                      {getTotalAmount().toLocaleString("en-NG", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 </div>
