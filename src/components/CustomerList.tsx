@@ -18,6 +18,7 @@ import CustomerView from "./CustomerView";
 interface CustomerListProps {
   customers: Customer[];
   currentUser: import("../types").User;
+  onCustomerUpdated?: (customer: Customer) => void;
 }
 
 type ViewMode = "grid" | "list";
@@ -25,6 +26,7 @@ type ViewMode = "grid" | "list";
 export const CustomerList: React.FC<CustomerListProps> = ({
   customers,
   currentUser,
+  onCustomerUpdated,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [searchTerm, setSearchTerm] = useState("");
@@ -383,6 +385,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
         <CustomerView
           customer={selectedCustomer}
           onClose={handleCloseCustomerView}
+          onCustomerUpdated={onCustomerUpdated}
         />
       )}
     </div>

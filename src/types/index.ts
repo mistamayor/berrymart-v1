@@ -40,7 +40,7 @@ export interface SalesOrder {
   customer_name: string;
   customer_type: string;
   total_amount: number;
-  status: 'pending' | 'approved' | 'rejected' | 'dispatched' | 'delivered';
+  status: 'pending' | 'approved' | 'rejected' | 'dispatched' | 'delivered' | 'cancelled';
   created_at: string;
   created_by: number;
   created_by_name: string;
@@ -54,6 +54,12 @@ export interface SalesOrder {
   tracking_number?: string;
   delivery_notes?: string;
   notes?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+  cancellation_reason?: string;
+  last_modified_at?: string;
+  last_modified_by?: string;
+  last_modified_changes?: string;
 }
 
 export interface OrderItem {
@@ -103,4 +109,47 @@ export interface User {
 export interface AuthState {
   isAuthenticated: boolean;
   user: User | null;
+}
+
+export interface StockAlert {
+  id: number;
+  product_id: number;
+  product_name: string;
+  current_stock: number;
+  threshold: number;
+  alert_level: 'low' | 'critical' | 'out_of_stock';
+  created_at: string;
+  acknowledged: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+}
+
+export interface StockThreshold {
+  low_stock: number;
+  critical_stock: number;
+}
+
+export interface OrderEditPermissions {
+  canEditCustomer: boolean;
+  canEditItems: boolean;
+  canEditNotes: boolean;
+  canAddItems: boolean;
+  canRemoveItems: boolean;
+  canEditQuantities: boolean;
+}
+
+export interface OrderUpdateData {
+  customer_id?: number;
+  customer_name?: string;
+  customer_type?: string;
+  notes?: string;
+  total_amount?: number;
+}
+
+export interface OrderItemUpdateData {
+  product_id?: number;
+  product_name?: string;
+  quantity?: number;
+  unit_price?: number;
+  total_price?: number;
 }

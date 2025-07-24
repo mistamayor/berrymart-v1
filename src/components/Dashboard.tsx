@@ -8,8 +8,10 @@ import {
   TrendingUp,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
+import StockAlerts from './StockAlerts';
 
 interface DashboardProps {
   customers: Customer[];
@@ -201,38 +203,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ customers, products, order
           </div>
         </div>
 
-        {/* Alerts */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Alerts</h3>
-          <div className="space-y-3">
-            {stats.lowStockProducts > 0 && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-center">
-                  <TrendingUp className="w-5 h-5 text-yellow-600 mr-2" />
-                  <p className="text-sm font-medium text-yellow-800">
-                    {stats.lowStockProducts} product(s) running low on stock
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            {stats.pendingOrders > 0 && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center">
-                  <Clock className="w-5 h-5 text-blue-600 mr-2" />
-                  <p className="text-sm font-medium text-blue-800">
-                    {stats.pendingOrders} order(s) pending approval
-                  </p>
-                </div>
-              </div>
-            )}
+        {/* Stock Alerts */}
+        <StockAlerts compact={true} />
+      </div>
 
-            {stats.totalOrders === 0 && (
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="text-sm text-gray-600">No orders yet. Create your first order to get started!</p>
+      {/* Additional Alerts Section */}
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">System Alerts</h3>
+        <div className="space-y-3">
+          {stats.pendingOrders > 0 && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center">
+                <Clock className="w-5 h-5 text-blue-600 mr-2" />
+                <p className="text-sm font-medium text-blue-800">
+                  {stats.pendingOrders} order(s) pending approval
+                </p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {stats.totalOrders === 0 && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <p className="text-sm text-gray-600">No orders yet. Create your first order to get started!</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

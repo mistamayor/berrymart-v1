@@ -1,4 +1,4 @@
-import { Customer, Product, SalesOrder, OrderItem, User, TransportVehicle } from '../types';
+import { Customer, Product, SalesOrder, OrderItem, User, TransportVehicle, StockAlert, StockThreshold, OrderUpdateData, OrderItemUpdateData } from '../types';
 
 class DatabaseManager {
   private customers: Customer[] = [];
@@ -7,15 +7,19 @@ class DatabaseManager {
   private orderItems: OrderItem[] = [];
   private users: User[] = [];
   private transportVehicles: TransportVehicle[] = [];
+  private stockAlerts: StockAlert[] = [];
+  private stockThresholds: StockThreshold = { low_stock: 10, critical_stock: 5 };
   private nextCustomerId = 1;
   private nextProductId = 1;
   private nextOrderId = 1;
   private nextOrderItemId = 1;
   private nextUserId = 1;
   private nextVehicleId = 1;
+  private nextStockAlertId = 1;
 
   constructor() {
     this.seedData();
+    this.generateStockAlerts(); // Generate initial stock alerts
   }
 
   private seedData() {
@@ -281,6 +285,21 @@ class DatabaseManager {
     return newProduct;
   }
 
+  updateProduct(id: number, updates: Partial<Omit<Product, 'id' | 'created_at'>>): Product {
+    const productIndex = this.products.findIndex(p => p.id === id);
+    if (productIndex === -1) throw new Error('Product not found');
+    
+    this.products[productIndex] = {
+      ...this.products[productIndex],
+      ...updates
+    };
+    
+    // Check for stock alerts after product update
+    this.checkAndGenerateStockAlerts();
+    
+    return this.products[productIndex];
+  }
+
   // Order methods
   getAllOrders(): SalesOrder[] {
     return [...this.orders].sort((a, b) => 
@@ -310,6 +329,17 @@ class DatabaseManager {
     }));
     this.orders.push(newOrder);
     this.orderItems.push(...newOrderItems);
+    
+    // Update product stock quantities and check for alerts
+    items.forEach(item => {
+      const product = this.products.find(p => p.id === item.product_id);
+      if (product) {
+        product.stock_quantity = Math.max(0, product.stock_quantity - item.quantity);
+      }
+    });
+    
+    this.checkAndGenerateStockAlerts();
+    
     return newOrder;
   }
 
@@ -369,6 +399,339 @@ class DatabaseManager {
     };
 
     return true;
+  }
+
+  // Order editing methods
+  updateOrder(orderId: number, updates: OrderUpdateData, modifiedBy: string): SalesOrder | null {
+    const orderIndex = this.orders.findIndex(order => order.id === orderId);
+    if (orderIndex === -1) return null;
+
+    const currentOrder = this.orders[orderIndex];
+    
+    // Create change log
+    const changes: Record<string, { old: any; new: any }> = {};
+    Object.keys(updates).forEach(key => {
+      const typedKey = key as keyof OrderUpdateData;
+      if (updates[typedKey] !== undefined && currentOrder[typedKey as keyof SalesOrder] !== updates[typedKey]) {
+        changes[key] = {
+          old: currentOrder[typedKey as keyof SalesOrder],
+          new: updates[typedKey]
+        };
+      }
+    });
+
+    // Update order
+    this.orders[orderIndex] = {
+      ...currentOrder,
+      ...updates,
+      last_modified_at: new Date().toISOString(),
+      last_modified_by: modifiedBy,
+      last_modified_changes: JSON.stringify(changes)
+    };
+
+    return this.orders[orderIndex];
+  }
+
+  updateOrderItem(itemId: number, updates: OrderItemUpdateData): OrderItem | null {
+    const itemIndex = this.orderItems.findIndex(item => item.id === itemId);
+    if (itemIndex === -1) return null;
+
+    const currentItem = this.orderItems[itemIndex];
+    const oldQuantity = currentItem.quantity;
+    const newQuantity = updates.quantity ?? oldQuantity;
+
+    // Handle stock adjustments
+    if (updates.quantity && updates.quantity !== oldQuantity) {
+      const product = this.products.find(p => p.id === currentItem.product_id);
+      if (product) {
+        // Return old quantity to stock and subtract new quantity
+        const stockDifference = oldQuantity - newQuantity;
+        product.stock_quantity = Math.max(0, product.stock_quantity + stockDifference);
+      }
+    }
+
+    // Update item
+    this.orderItems[itemIndex] = {
+      ...currentItem,
+      ...updates,
+      total_price: updates.quantity && updates.unit_price 
+        ? updates.quantity * updates.unit_price 
+        : currentItem.total_price
+    };
+
+    // Update order total
+    this.recalculateOrderTotal(currentItem.order_id);
+    this.checkAndGenerateStockAlerts();
+
+    return this.orderItems[itemIndex];
+  }
+
+  addOrderItem(orderId: number, item: Omit<OrderItem, 'id' | 'order_id'>): OrderItem | null {
+    // Check if order exists
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return null;
+
+    // Check stock availability
+    const product = this.products.find(p => p.id === item.product_id);
+    if (!product || product.stock_quantity < item.quantity) {
+      return null; // Insufficient stock
+    }
+
+    // Create new order item
+    const newItem: OrderItem = {
+      ...item,
+      id: this.nextOrderItemId++,
+      order_id: orderId,
+      total_price: item.quantity * item.unit_price
+    };
+
+    this.orderItems.push(newItem);
+
+    // Update product stock
+    product.stock_quantity -= item.quantity;
+
+    // Update order total
+    this.recalculateOrderTotal(orderId);
+    this.checkAndGenerateStockAlerts();
+
+    return newItem;
+  }
+
+  removeOrderItem(itemId: number): boolean {
+    const itemIndex = this.orderItems.findIndex(item => item.id === itemId);
+    if (itemIndex === -1) return false;
+
+    const itemToRemove = this.orderItems[itemIndex];
+    
+    // Return stock to product
+    const product = this.products.find(p => p.id === itemToRemove.product_id);
+    if (product) {
+      product.stock_quantity += itemToRemove.quantity;
+    }
+
+    // Remove item
+    this.orderItems.splice(itemIndex, 1);
+
+    // Update order total
+    this.recalculateOrderTotal(itemToRemove.order_id);
+    this.checkAndGenerateStockAlerts();
+
+    return true;
+  }
+
+  private recalculateOrderTotal(orderId: number): void {
+    const orderIndex = this.orders.findIndex(order => order.id === orderId);
+    if (orderIndex === -1) return;
+
+    const orderItems = this.orderItems.filter(item => item.order_id === orderId);
+    const totalAmount = orderItems.reduce((sum, item) => sum + item.total_price, 0);
+
+    this.orders[orderIndex] = {
+      ...this.orders[orderIndex],
+      total_amount: totalAmount
+    };
+  }
+
+  canEditOrder(orderId: number, userRole: string): boolean {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return false;
+
+    // Business rules for editing permissions
+    switch (order.status) {
+      case 'pending':
+        return ['Admin', 'Manager', 'Sales'].includes(userRole);
+      case 'approved':
+        return ['Admin', 'Manager'].includes(userRole);
+      case 'rejected':
+        return ['Admin', 'Manager', 'Sales'].includes(userRole);
+      case 'dispatched':
+      case 'delivered':
+        return ['Admin'].includes(userRole); // Very limited editing for dispatched/delivered
+      case 'cancelled':
+        return false; // Cancelled orders cannot be edited
+      default:
+        return false;
+    }
+  }
+
+  cancelOrder(orderId: number, reason: string, cancelledBy: string): boolean {
+    const orderIndex = this.orders.findIndex(order => order.id === orderId);
+    if (orderIndex === -1) return false;
+
+    const order = this.orders[orderIndex];
+    
+    // Prevent cancellation of already completed/cancelled orders
+    if (['delivered', 'cancelled'].includes(order.status)) {
+      return false;
+    }
+
+    // Restore stock for all order items
+    const orderItems = this.orderItems.filter(item => item.order_id === orderId);
+    orderItems.forEach(item => {
+      const product = this.products.find(p => p.id === item.product_id);
+      if (product) {
+        product.stock_quantity += item.quantity;
+      }
+    });
+
+    // Update order status
+    this.orders[orderIndex] = {
+      ...order,
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: cancelledBy,
+      cancellation_reason: reason
+    };
+
+    // Update stock alerts after restoration
+    this.checkAndGenerateStockAlerts();
+    
+    return true;
+  }
+
+  canCancelOrder(orderId: number, userRole: string, userId: number): boolean {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return false;
+
+    // Cannot cancel completed, rejected, or already cancelled orders
+    if (['delivered', 'rejected', 'cancelled'].includes(order.status)) {
+      return false;
+    }
+
+    // Role-based cancellation permissions
+    switch (userRole) {
+      case 'Admin':
+        return true; // Can cancel any status
+      case 'Manager':
+        return ['pending', 'approved'].includes(order.status);
+      case 'Sales':
+        return order.status === 'pending' && order.created_by === userId;
+      default:
+        return false;
+    }
+  }
+
+  // Bulk order operations
+  bulkApproveOrders(orderIds: number[], approvedBy: string, comment?: string): { successful: number[]; failed: Array<{orderId: number; reason: string}>; totalProcessed: number } {
+    const successful: number[] = [];
+    const failed: Array<{orderId: number; reason: string}> = [];
+
+    orderIds.forEach(orderId => {
+      const order = this.orders.find(o => o.id === orderId);
+      if (!order) {
+        failed.push({ orderId, reason: 'Order not found' });
+        return;
+      }
+      
+      if (order.status !== 'pending') {
+        failed.push({ orderId, reason: `Order status is ${order.status}, not pending` });
+        return;
+      }
+
+      if (this.approveOrder(orderId, approvedBy)) {
+        successful.push(orderId);
+      } else {
+        failed.push({ orderId, reason: 'Failed to approve order' });
+      }
+    });
+
+    return {
+      successful,
+      failed,
+      totalProcessed: orderIds.length
+    };
+  }
+
+  bulkRejectOrders(orderIds: number[], reason: string): { successful: number[]; failed: Array<{orderId: number; reason: string}>; totalProcessed: number } {
+    const successful: number[] = [];
+    const failed: Array<{orderId: number; reason: string}> = [];
+
+    orderIds.forEach(orderId => {
+      const order = this.orders.find(o => o.id === orderId);
+      if (!order) {
+        failed.push({ orderId, reason: 'Order not found' });
+        return;
+      }
+      
+      if (order.status !== 'pending') {
+        failed.push({ orderId, reason: `Order status is ${order.status}, not pending` });
+        return;
+      }
+
+      if (this.rejectOrder(orderId, reason)) {
+        successful.push(orderId);
+      } else {
+        failed.push({ orderId, reason: 'Failed to reject order' });
+      }
+    });
+
+    return {
+      successful,
+      failed,
+      totalProcessed: orderIds.length
+    };
+  }
+
+  bulkCancelOrders(orderIds: number[], reason: string, cancelledBy: string): { successful: number[]; failed: Array<{orderId: number; reason: string}>; totalProcessed: number } {
+    const successful: number[] = [];
+    const failed: Array<{orderId: number; reason: string}> = [];
+
+    orderIds.forEach(orderId => {
+      const order = this.orders.find(o => o.id === orderId);
+      if (!order) {
+        failed.push({ orderId, reason: 'Order not found' });
+        return;
+      }
+      
+      if (['delivered', 'cancelled'].includes(order.status)) {
+        failed.push({ orderId, reason: `Cannot cancel ${order.status} order` });
+        return;
+      }
+
+      if (this.cancelOrder(orderId, reason, cancelledBy)) {
+        successful.push(orderId);
+      } else {
+        failed.push({ orderId, reason: 'Failed to cancel order' });
+      }
+    });
+
+    return {
+      successful,
+      failed,
+      totalProcessed: orderIds.length
+    };
+  }
+
+  bulkDispatchOrders(orderIds: number[], dispatchedBy: string, trackingNumbers: string[], vehicleId: number): { successful: number[]; failed: Array<{orderId: number; reason: string}>; totalProcessed: number } {
+    const successful: number[] = [];
+    const failed: Array<{orderId: number; reason: string}> = [];
+
+    orderIds.forEach((orderId, index) => {
+      const order = this.orders.find(o => o.id === orderId);
+      if (!order) {
+        failed.push({ orderId, reason: 'Order not found' });
+        return;
+      }
+      
+      if (order.status !== 'approved') {
+        failed.push({ orderId, reason: `Order status is ${order.status}, not approved` });
+        return;
+      }
+
+      const trackingNumber = trackingNumbers[index] || `BULK-${Date.now()}-${orderId}`;
+      
+      if (this.dispatchOrder(orderId, dispatchedBy, trackingNumber, vehicleId)) {
+        successful.push(orderId);
+      } else {
+        failed.push({ orderId, reason: 'Failed to dispatch order' });
+      }
+    });
+
+    return {
+      successful,
+      failed,
+      totalProcessed: orderIds.length
+    };
   }
 
   // User methods
@@ -455,6 +818,89 @@ class DatabaseManager {
     vehicle.assigned_agent_id = agentId;
     agent.vehicle_id = vehicleId;
     return true;
+  }
+
+  // Stock Alert methods
+  getAllStockAlerts(): StockAlert[] {
+    return [...this.stockAlerts].sort((a, b) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
+  getActiveStockAlerts(): StockAlert[] {
+    return this.stockAlerts.filter(alert => !alert.acknowledged);
+  }
+
+  generateStockAlerts(): StockAlert[] {
+    const newAlerts: StockAlert[] = [];
+    
+    this.products.forEach(product => {
+      const existingAlert = this.stockAlerts.find(
+        alert => alert.product_id === product.id && !alert.acknowledged
+      );
+      
+      // Don't create duplicate alerts for the same product
+      if (existingAlert) return;
+      
+      let alertLevel: 'low' | 'critical' | 'out_of_stock' | null = null;
+      let threshold = 0;
+      
+      if (product.stock_quantity === 0) {
+        alertLevel = 'out_of_stock';
+        threshold = 0;
+      } else if (product.stock_quantity <= this.stockThresholds.critical_stock) {
+        alertLevel = 'critical';
+        threshold = this.stockThresholds.critical_stock;
+      } else if (product.stock_quantity <= this.stockThresholds.low_stock) {
+        alertLevel = 'low';
+        threshold = this.stockThresholds.low_stock;
+      }
+      
+      if (alertLevel) {
+        const alert: StockAlert = {
+          id: this.nextStockAlertId++,
+          product_id: product.id,
+          product_name: product.name,
+          current_stock: product.stock_quantity,
+          threshold,
+          alert_level: alertLevel,
+          created_at: new Date().toISOString(),
+          acknowledged: false
+        };
+        
+        this.stockAlerts.push(alert);
+        newAlerts.push(alert);
+      }
+    });
+    
+    return newAlerts;
+  }
+
+  acknowledgeStockAlert(alertId: number, acknowledgedBy: string): boolean {
+    const alertIndex = this.stockAlerts.findIndex(alert => alert.id === alertId);
+    if (alertIndex === -1) return false;
+    
+    this.stockAlerts[alertIndex] = {
+      ...this.stockAlerts[alertIndex],
+      acknowledged: true,
+      acknowledged_by: acknowledgedBy,
+      acknowledged_at: new Date().toISOString()
+    };
+    
+    return true;
+  }
+
+  updateStockThresholds(thresholds: StockThreshold): void {
+    this.stockThresholds = { ...thresholds };
+  }
+
+  getStockThresholds(): StockThreshold {
+    return { ...this.stockThresholds };
+  }
+
+  // Auto-generate alerts when products are updated or orders are created
+  private checkAndGenerateStockAlerts(): void {
+    this.generateStockAlerts();
   }
 
   close() {
