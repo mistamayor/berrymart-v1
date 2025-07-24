@@ -20,6 +20,7 @@ import { CustomerForm } from "./CustomerForm";
 interface CustomerViewProps {
   customer: Customer;
   onClose: () => void;
+  onCustomerUpdated?: (customer: Customer) => void;
 }
 
 const getStatusIcon = (status: string) => {
@@ -66,7 +67,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
+const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose, onCustomerUpdated }) => {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [showEditForm, setShowEditForm] = useState(false);
   const [customerData, setCustomerData] = useState<Customer>(customer);
@@ -94,7 +95,10 @@ const CustomerView: React.FC<CustomerViewProps> = ({ customer, onClose }) => {
   const handleCustomerUpdated = (updatedCustomer: Customer) => {
     setCustomerData(updatedCustomer);
     setShowEditForm(false);
-    // Optionally, trigger a parent refresh if needed
+    // Trigger parent refresh to update the customer list
+    if (onCustomerUpdated) {
+      onCustomerUpdated(updatedCustomer);
+    }
   };
 
   return (

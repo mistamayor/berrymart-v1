@@ -6,22 +6,37 @@ import { Package, DollarSign, Hash, FileText, Boxes } from "lucide-react";
 interface ProductFormProps {
   onProductAdded: (product: Product) => void;
   onClose: () => void;
+  product?: Product;
 }
 
 export const ProductForm: React.FC<ProductFormProps> = ({
   onProductAdded,
   onClose,
+  product,
 }) => {
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    sku: "",
-    base_price: "",
-    retail_price: "",
-    wholesale_price: "",
-    open_market_price: "",
-    stock_quantity: "",
-  });
+  const [formData, setFormData] = useState(() =>
+    product
+      ? {
+          name: product.name,
+          description: product.description,
+          sku: product.sku,
+          base_price: product.base_price.toString(),
+          retail_price: product.retail_price.toString(),
+          wholesale_price: product.wholesale_price.toString(),
+          open_market_price: product.open_market_price.toString(),
+          stock_quantity: product.stock_quantity.toString(),
+        }
+      : {
+          name: "",
+          description: "",
+          sku: "",
+          base_price: "",
+          retail_price: "",
+          wholesale_price: "",
+          open_market_price: "",
+          stock_quantity: "",
+        }
+  );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -52,7 +67,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({
     e.preventDefault();
     if (validateForm()) {
       try {
-        const product = db.createProduct({
+        let result: Product;
+        const productData = {
           name: formData.name,
           description: formData.description,
           sku: formData.sku,
@@ -61,8 +77,16 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           wholesale_price: parseFloat(formData.wholesale_price),
           open_market_price: parseFloat(formData.open_market_price),
           stock_quantity: parseInt(formData.stock_quantity),
-        });
-        onProductAdded(product);
+        };
+
+        if (product) {
+          // Edit mode
+          result = db.updateProduct(product.id, productData);
+        } else {
+          // Create mode
+          result = db.createProduct(productData);
+        }
+        onProductAdded(result);
         onClose();
       } catch (error) {
         console.error("Error creating product:", error);
@@ -87,7 +111,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-gray-800 flex items-center">
               <Package className="w-6 h-6 mr-2 text-blue-600" />
-              Add New Product
+              {product ? "Edit Product" : "Add New Product"}
             </h2>
             <button
               onClick={onClose}
@@ -306,7 +330,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                 type="submit"
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Add Product
+{product ? "Update Product" : "Add Product"}
               </button>
             </div>
           </form>

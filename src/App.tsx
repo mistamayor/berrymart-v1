@@ -113,8 +113,16 @@ function App() {
     setCustomers((prev) => [customer, ...prev]);
   };
 
+  const handleCustomerUpdated = (customer: Customer) => {
+    loadData(); // Refresh all data to ensure consistency
+  };
+
   const handleProductAdded = (product: Product) => {
     setProducts((prev) => [product, ...prev]);
+  };
+
+  const handleProductUpdated = (product: Product) => {
+    loadData(); // Refresh all data to ensure consistency
   };
 
   const handleOrderAdded = (order: SalesOrder) => {
@@ -183,10 +191,11 @@ function App() {
           <CustomerList
             customers={customers}
             currentUser={authState.user!}
+            onCustomerUpdated={handleCustomerUpdated}
           />
         );
       case "products":
-        return <ProductList products={products} />;
+        return <ProductList products={products} onProductUpdated={handleProductUpdated} />;
       case "users":
         return auth.hasPermission(["Admin"]) ? (
           <UserManagement
