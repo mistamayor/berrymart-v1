@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { auth } from '../lib/auth';
+import { supabaseAuth } from '../lib/supabaseAuth';
 import { LogIn, User, Lock, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
@@ -7,7 +7,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -19,11 +19,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const success = auth.login(username, password);
-      if (success) {
+      const result = await supabaseAuth.signIn(email, password);
+      if (result.success) {
         onLogin();
       } else {
-        setError('Invalid username or password');
+        setError(result.error || 'Invalid email or password');
       }
     } catch (error) {
       setError('An error occurred during login');
@@ -47,10 +47,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           {/* Demo Credentials */}
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-sm font-medium text-blue-900 mb-2">Demo Credentials:</h3>
+            <h3 className="text-sm font-medium text-blue-900 mb-2">Login Information:</h3>
             <div className="text-sm text-blue-800 space-y-1">
-              <p><strong>Username:</strong> Admin</p>
-              <p><strong>Password:</strong> password</p>
+              <p><strong>Email:</strong> Use your registered email address</p>
+              <p><strong>Password:</strong> Use your account password</p>
             </div>
           </div>
 
@@ -64,16 +64,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Username
+                Email Address
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your username"
+                  placeholder="Enter your email address"
                   required
                 />
               </div>

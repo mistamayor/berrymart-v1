@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Customer, Product, SalesOrder, OrderItem, OrderEditPermissions } from "../types";
-import { db } from "../lib/database";
-import { auth } from "../lib/auth";
+import { supabaseDb } from "../lib/supabaseDatabase";
+import { supabaseAuth } from "../lib/supabaseAuth";
 import {
   ShoppingCart,
   User,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { SalesOrder, OrderItem, TransportVehicle, Customer, Product } from "../types";
-import { db } from "../lib/database";
-import { auth } from "../lib/auth";
+import { supabaseDb } from "../lib/supabaseDatabase";
+import { supabaseAuth } from "../lib/supabaseAuth";
 import { OrderEditModal } from "./OrderEditModal";
 import { OrderCancelModal } from "./OrderCancelModal";
 import { BulkActionModal } from "./BulkActionModal";
@@ -26,23 +26,28 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Edit3,
   Download,
+  Upload,
+  ImageIcon,
 } from "lucide-react";
 
 interface OrderListProps {
   orders: SalesOrder[];
   onStatusChange: () => void;
+  onViewOrderDetails: (orderId: number) => void;
   currentUser: { id: number; first_name: string; last_name: string; role: string };
 }
 
 export const OrderList: React.FC<OrderListProps> = ({
   orders,
   onStatusChange,
+  onViewOrderDetails,
   currentUser,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [showPODModal, setShowPODModal] = useState(false);
@@ -53,6 +58,9 @@ export const OrderList: React.FC<OrderListProps> = ({
   const [dispatchedBy, setDispatchedBy] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [podImage, setPodImage] = useState("");
+  const [podImageFile, setPodImageFile] = useState<File | null>(null);
+  const [podImagePreview, setPodImagePreview] = useState<string | null>(null);
+  const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
   const [deliveryNotes, setDeliveryNotes] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | "all">("all");
@@ -93,26 +101,47 @@ export const OrderList: React.FC<OrderListProps> = ({
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportScope, setExportScope] = useState<'selected' | 'filtered' | 'all'>('all');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [ordersPerPage] = useState(20);
 
   useEffect(() => {
     // Load customers and products
-    setCustomers(db.getAllCustomers());
-    setProducts(db.getAllProducts());
+    const loadData = async () => {
+      try {
+        const [customersData, productsData] = await Promise.all([
+          supabaseDb.getAllCustomers(),
+          supabaseDb.getAllProducts()
+        ]);
+        setCustomers(customersData);
+        setProducts(productsData);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    };
+    loadData();
   }, []);
 
   useEffect(() => {
     if (showDispatchModal) {
       setDispatchedBy(`${currentUser.first_name} ${currentUser.last_name}`);
-      setVehicles(
-        db.getAllTransportVehicles().filter((v) => v.status === "active")
-      );
+      const loadVehicles = async () => {
+        try {
+          const vehiclesData = await supabaseDb.getAllVehicles();
+          setVehicles(vehiclesData.filter((v) => v.status === "active"));
+        } catch (error) {
+          console.error('Error loading vehicles:', error);
+        }
+      };
+      loadVehicles();
       setSelectedVehicleId(null);
     }
   }, [showDispatchModal, currentUser]);
 
   // Enhanced filtered and sorted orders logic
   const filteredAndSortedOrders = React.useMemo(() => {
-    let filtered = orders.filter((order) => {
+    const filtered = orders.filter((order) => {
       // Text search
       const matchesSearch =
         searchTerm === "" ||
@@ -168,6 +197,18 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     return filtered;
   }, [orders, searchTerm, statusFilter, customerFilter, dateFromFilter, dateToFilter, 
+      amountMinFilter, amountMaxFilter, sortBy, sortOrder]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredAndSortedOrders.length / ordersPerPage);
+  const startIndex = (currentPage - 1) * ordersPerPage;
+  const endIndex = startIndex + ordersPerPage;
+  const paginatedOrders = filteredAndSortedOrders.slice(startIndex, endIndex);
+
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, customerFilter, dateFromFilter, dateToFilter, 
       amountMinFilter, amountMaxFilter, sortBy, sortOrder]);
 
   // Helper functions
@@ -247,8 +288,7 @@ export const OrderList: React.FC<OrderListProps> = ({
   };
 
   const viewOrderDetails = (order: SalesOrder) => {
-    setSelectedOrder(order);
-    setOrderItems(db.getOrderItems(order.id));
+    onViewOrderDetails(order.id);
   };
 
   const initiateApproval = (
@@ -270,9 +310,10 @@ export const OrderList: React.FC<OrderListProps> = ({
     setShowPODModal(true);
   };
 
-  const initiateEdit = (order: SalesOrder) => {
+  const initiateEdit = async (order: SalesOrder) => {
     setEditingOrder(order);
-    setEditingOrderItems(db.getOrderItems(order.id));
+    const items = await supabaseDb.getOrderItems(order.id);
+    setEditingOrderItems(items);
     setShowEditModal(true);
   };
 
@@ -324,17 +365,17 @@ export const OrderList: React.FC<OrderListProps> = ({
 
     switch (action) {
       case 'approve':
-        return auth.hasPermission(["Admin", "Manager"]) && 
+        return supabaseAuth.hasPermission(["Admin", "Manager"]) && 
                selected.every(order => order.status === 'pending');
       case 'reject':
-        return auth.hasPermission(["Admin", "Manager"]) && 
+        return supabaseAuth.hasPermission(["Admin", "Manager"]) && 
                selected.every(order => order.status === 'pending');
       case 'dispatch':
-        return auth.hasPermission(["Admin", "Manager", "Inventory"]) && 
+        return supabaseAuth.hasPermission(["Admin", "Manager", "Inventory"]) && 
                selected.every(order => order.status === 'approved');
       case 'cancel':
         return selected.every(order => 
-          db.canCancelOrder(order.id, currentUser.role, currentUser.id)
+          supabaseAuth.canCancelOrder(order)
         );
       default:
         return false;
@@ -385,18 +426,18 @@ export const OrderList: React.FC<OrderListProps> = ({
         return filteredAndSortedOrders;
     }
   };
-  const handleApproval = () => {
+  const handleApproval = async () => {
     if (!selectedOrder) return;
     try {
       if (approvalAction === "approve") {
         const approverName = `${currentUser.first_name} ${currentUser.last_name}`;
-        db.approveOrder(selectedOrder.id, approverName, approvalComment);
+        await supabaseDb.approveOrder(selectedOrder.id, approverName);
       } else {
         if (!rejectionReason.trim()) {
           alert("Please enter rejection reason");
           return;
         }
-        db.rejectOrder(selectedOrder.id, rejectionReason);
+        await supabaseDb.cancelOrder(selectedOrder.id, `${currentUser.first_name} ${currentUser.last_name}`, rejectionReason);
       }
       setShowApprovalModal(false);
       setSelectedOrder(null);
@@ -408,19 +449,19 @@ export const OrderList: React.FC<OrderListProps> = ({
     }
   };
 
-  const handleDispatch = () => {
+  const handleDispatch = async () => {
     if (!selectedOrder) return;
     if (!dispatchedBy.trim() || !trackingNumber.trim() || !selectedVehicleId) {
       alert("Please fill in all dispatch details and select a vehicle");
       return;
     }
     try {
-      db.dispatchOrder(
-        selectedOrder.id,
-        dispatchedBy,
-        trackingNumber,
-        selectedVehicleId
-      );
+      await supabaseDb.updateOrder(selectedOrder.id, {
+        status: 'dispatched',
+        dispatched_by: dispatchedBy,
+        dispatched_at: new Date().toISOString(),
+        tracking_number: trackingNumber
+      });
       setShowDispatchModal(false);
       setSelectedOrder(null);
       setDispatchedBy("");
@@ -432,23 +473,129 @@ export const OrderList: React.FC<OrderListProps> = ({
     }
   };
 
-  const handlePOD = () => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPodImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setPodImagePreview(result);
+        setPodImage(result); // For now, use the data URL
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } // Use back camera if available
+      });
+      setIsCapturingPhoto(true);
+      
+      // Create a video element to show camera feed
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      // Create a modal overlay for camera
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60]';
+      
+      const container = document.createElement('div');
+      container.className = 'bg-white p-4 rounded-lg max-w-md w-full mx-4';
+      
+      const videoContainer = document.createElement('div');
+      videoContainer.className = 'relative mb-4';
+      video.className = 'w-full rounded-lg';
+      videoContainer.appendChild(video);
+      
+      const buttonContainer = document.createElement('div');
+      buttonContainer.className = 'flex space-x-3';
+      
+      const captureBtn = document.createElement('button');
+      captureBtn.textContent = 'Capture Photo';
+      captureBtn.className = 'flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700';
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.className = 'flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50';
+      
+      const cleanup = () => {
+        stream.getTracks().forEach(track => track.stop());
+        document.body.removeChild(overlay);
+        setIsCapturingPhoto(false);
+      };
+      
+      captureBtn.onclick = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(video, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], 'pod-photo.jpg', { type: 'image/jpeg' });
+            setPodImageFile(file);
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const result = e.target?.result as string;
+              setPodImagePreview(result);
+              setPodImage(result);
+            };
+            reader.readAsDataURL(file);
+          }
+        }, 'image/jpeg', 0.8);
+        
+        cleanup();
+      };
+      
+      cancelBtn.onclick = cleanup;
+      
+      buttonContainer.appendChild(cancelBtn);
+      buttonContainer.appendChild(captureBtn);
+      container.appendChild(videoContainer);
+      container.appendChild(buttonContainer);
+      overlay.appendChild(container);
+      document.body.appendChild(overlay);
+      
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert('Unable to access camera. Please use file upload instead.');
+    }
+  };
+
+  const handlePOD = async () => {
     if (!selectedOrder) return;
 
-    if (!podImage.trim()) {
-      alert("Please provide POD image URL");
+    if (!podImagePreview && !podImage.trim()) {
+      alert("Please provide a proof of delivery image");
       return;
     }
 
     try {
-      db.markDelivered(selectedOrder.id, podImage, deliveryNotes);
+      // Use the preview image (data URL) as the POD image
+      const podImageData = podImagePreview || podImage;
+      
+      await supabaseDb.updateOrder(selectedOrder.id, {
+        status: 'delivered',
+        delivered_at: new Date().toISOString(),
+        pod_image: podImageData,
+        delivery_notes: deliveryNotes.trim() || undefined
+      });
       setShowPODModal(false);
       setSelectedOrder(null);
       setPodImage("");
+      setPodImageFile(null);
+      setPodImagePreview(null);
       setDeliveryNotes("");
       onStatusChange();
     } catch (error) {
       console.error("Error marking order as delivered:", error);
+      alert("Failed to mark order as delivered. Please try again.");
     }
   };
   const formatDate = (dateString: string) => {
@@ -475,49 +622,32 @@ export const OrderList: React.FC<OrderListProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header with Search and Filters */}
+      {/* Simplified Header */}
       <div className="flex flex-col gap-4">
+        {/* Top Row: Title and Primary Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Sales Orders</h2>
-            <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-              <span className="flex items-center">
-                <Clock className="w-4 h-4 mr-1 text-yellow-500" />
-                Pending: {orders.filter((o) => o.status === "pending").length}
-              </span>
-              <span className="flex items-center">
-                <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
-                Approved: {orders.filter((o) => o.status === "approved").length}
-              </span>
-              <span className="flex items-center">
-                <Truck className="w-4 h-4 mr-1 text-blue-500" />
-                Dispatched: {orders.filter((o) => o.status === "dispatched").length}
-              </span>
-              <span className="flex items-center">
-                <MapPin className="w-4 h-4 mr-1 text-purple-500" />
-                Delivered: {orders.filter((o) => o.status === "delivered").length}
-              </span>
-              <span className="flex items-center">
-                <XCircle className="w-4 h-4 mr-1 text-red-500" />
-                Rejected: {orders.filter((o) => o.status === "rejected").length}
-              </span>
-              <span className="flex items-center">
-                <XCircle className="w-4 h-4 mr-1 text-gray-500" />
-                Cancelled: {orders.filter((o) => o.status === "cancelled").length}
-              </span>
-            </div>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-bold text-gray-900">Orders</h2>
+            <span className="text-sm text-gray-500">
+              {filteredAndSortedOrders.length} of {orders.length} orders
+              {totalPages > 1 && (
+                <span className="ml-2 text-xs">
+                  (Page {currentPage} of {totalPages})
+                </span>
+              )}
+            </span>
           </div>
 
-          <div className="flex items-center space-x-4">
-            {/* Main Search */}
+          <div className="flex items-center space-x-3">
+            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-                placeholder="Search orders, customers..."
+                className="pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+                placeholder="Search orders..."
               />
               {searchTerm && (
                 <button
@@ -529,92 +659,103 @@ export const OrderList: React.FC<OrderListProps> = ({
               )}
             </div>
 
-            {/* Advanced Filter Toggle */}
+            {/* Quick Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="dispatched">Dispatched</option>
+              <option value="delivered">Delivered</option>
+              <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+
+            {/* More Filters Button */}
             <button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className={`p-2 rounded-lg border transition-colors ${
+              className={`flex items-center px-3 py-2 text-sm rounded-lg border transition-colors ${
                 showAdvancedFilters || hasActiveFilters
                   ? "bg-blue-50 border-blue-200 text-blue-600"
-                  : "bg-white border-gray-300 text-gray-600 hover:text-gray-900"
+                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
               }`}
-              title="Advanced Filters"
             >
-              <Filter className="w-4 h-4" />
+              <Filter className="w-4 h-4 mr-1" />
+              Filters
+              {hasActiveFilters && <span className="ml-1 text-xs bg-blue-100 text-blue-600 px-1 rounded">•</span>}
             </button>
 
-            {/* Export Button */}
+            {/* Export */}
             <button
               onClick={() => initiateExport(hasActiveFilters ? 'filtered' : 'all')}
-              className="flex items-center px-3 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
-              title={hasActiveFilters ? "Export Filtered Orders" : "Export All Orders"}
+              className="flex items-center px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <Download className="w-4 h-4 mr-1" />
-              Export {hasActiveFilters ? 'Filtered' : 'All'}
+              Export
             </button>
-
-            {/* Sort Controls */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">Sort:</span>
-              <button
-                onClick={() => toggleSortOrder("date")}
-                className={`flex items-center px-2 py-1 text-xs rounded transition-colors ${
-                  sortBy === "date" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Date {sortBy === "date" && (sortOrder === "desc" ? <ChevronDown className="w-3 h-3 ml-1" /> : <ChevronUp className="w-3 h-3 ml-1" />)}
-              </button>
-              <button
-                onClick={() => toggleSortOrder("amount")}
-                className={`flex items-center px-2 py-1 text-xs rounded transition-colors ${
-                  sortBy === "amount" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Amount {sortBy === "amount" && (sortOrder === "desc" ? <ChevronDown className="w-3 h-3 ml-1" /> : <ChevronUp className="w-3 h-3 ml-1" />)}
-              </button>
-              <button
-                onClick={() => toggleSortOrder("customer")}
-                className={`flex items-center px-2 py-1 text-xs rounded transition-colors ${
-                  sortBy === "customer" ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Customer {sortBy === "customer" && (sortOrder === "desc" ? <ChevronDown className="w-3 h-3 ml-1" /> : <ChevronUp className="w-3 h-3 ml-1" />)}
-              </button>
-            </div>
           </div>
+        </div>
+
+        {/* Status Summary Cards - Compact */}
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+          {[
+            { status: 'pending', label: 'Pending', icon: Clock, activeClass: 'bg-yellow-50 border-yellow-200 text-yellow-700', iconClass: 'text-yellow-600' },
+            { status: 'approved', label: 'Approved', icon: CheckCircle, activeClass: 'bg-green-50 border-green-200 text-green-700', iconClass: 'text-green-600' },
+            { status: 'dispatched', label: 'Dispatched', icon: Truck, activeClass: 'bg-blue-50 border-blue-200 text-blue-700', iconClass: 'text-blue-600' },
+            { status: 'delivered', label: 'Delivered', icon: MapPin, activeClass: 'bg-purple-50 border-purple-200 text-purple-700', iconClass: 'text-purple-600' },
+            { status: 'rejected', label: 'Rejected', icon: XCircle, activeClass: 'bg-red-50 border-red-200 text-red-700', iconClass: 'text-red-600' },
+            { status: 'cancelled', label: 'Cancelled', icon: XCircle, activeClass: 'bg-gray-50 border-gray-200 text-gray-700', iconClass: 'text-gray-600' }
+          ].map(({ status, label, icon: Icon, activeClass, iconClass }) => {
+            const count = orders.filter(o => o.status === status).length;
+            const isActive = statusFilter === status;
+            
+            return (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  isActive 
+                    ? activeClass
+                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <Icon className={`w-4 h-4 ${isActive ? iconClass : 'text-gray-400'}`} />
+                  <span className="text-lg font-semibold">{count}</span>
+                </div>
+                <div className="text-xs font-medium mt-1">{label}</div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Advanced Filters Panel */}
         {showAdvancedFilters && (
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Status Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="dispatched">Dispatched</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-
+          <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-900">Advanced Filters</h3>
+              <button
+                onClick={clearAllFilters}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Clear All
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Customer Filter */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Customer</label>
                 <select
                   value={customerFilter}
                   onChange={(e) => setCustomerFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="all">All Customers</option>
-                  {customers.map((customer) => (
+                  {customers.slice(0, 10).map((customer) => (
                     <option key={customer.id} value={customer.id.toString()}>
                       {customer.name}
                     </option>
@@ -624,61 +765,70 @@ export const OrderList: React.FC<OrderListProps> = ({
 
               {/* Date From */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
                 <input
                   type="date"
                   value={dateFromFilter}
                   onChange={(e) => setDateFromFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
               {/* Date To */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
                 <input
                   type="date"
                   value={dateToFilter}
                   onChange={(e) => setDateToFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
               {/* Amount Min */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Min Amount (₦)</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Min Amount</label>
                 <input
                   type="number"
                   value={amountMinFilter}
                   onChange={(e) => setAmountMinFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0"
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="₦0"
                 />
               </div>
 
               {/* Amount Max */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Max Amount (₦)</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Max Amount</label>
                 <input
                   type="number"
                   value={amountMaxFilter}
                   onChange={(e) => setAmountMaxFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="No limit"
                 />
               </div>
-            </div>
 
-            <div className="flex justify-between items-center mt-4">
-              <div className="text-sm text-gray-600">
-                Showing {filteredAndSortedOrders.length} of {orders.length} orders
+              {/* Sort By */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Sort By</label>
+                <select
+                  value={`${sortBy}-${sortOrder}`}
+                  onChange={(e) => {
+                    const [field, order] = e.target.value.split('-');
+                    setSortBy(field as any);
+                    setSortOrder(order as any);
+                  }}
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="date-desc">Date (Newest)</option>
+                  <option value="date-asc">Date (Oldest)</option>
+                  <option value="amount-desc">Amount (High-Low)</option>
+                  <option value="amount-asc">Amount (Low-High)</option>
+                  <option value="customer-asc">Customer (A-Z)</option>
+                  <option value="customer-desc">Customer (Z-A)</option>
+                </select>
               </div>
-              <button
-                onClick={clearAllFilters}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                Clear All Filters
-              </button>
             </div>
           </div>
         )}
@@ -698,23 +848,33 @@ export const OrderList: React.FC<OrderListProps> = ({
       </div>
 
       {/* Bulk Selection and Actions */}
-      {filteredAndSortedOrders.length > 0 && (
+      {paginatedOrders.length > 0 && (
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-4">
             <input
               type="checkbox"
-              checked={selectedOrders.length > 0 && selectedOrders.length === filteredAndSortedOrders.length}
+              checked={selectedOrders.length > 0 && paginatedOrders.every(order => selectedOrders.includes(order.id))}
               ref={(input) => {
                 if (input) {
-                  input.indeterminate = selectedOrders.length > 0 && selectedOrders.length < filteredAndSortedOrders.length;
+                  input.indeterminate = selectedOrders.length > 0 && !paginatedOrders.every(order => selectedOrders.includes(order.id));
                 }
               }}
-              onChange={handleSelectAll}
+              onChange={() => {
+                const currentPageIds = paginatedOrders.map(order => order.id);
+                const allCurrentSelected = currentPageIds.every(id => selectedOrders.includes(id));
+                if (allCurrentSelected) {
+                  // Deselect all on current page
+                  setSelectedOrders(prev => prev.filter(id => !currentPageIds.includes(id)));
+                } else {
+                  // Select all on current page
+                  setSelectedOrders(prev => [...new Set([...prev, ...currentPageIds])]);
+                }
+              }}
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <span className="text-sm text-gray-700">
               {selectedOrders.length > 0 
-                ? `${selectedOrders.length} of ${filteredAndSortedOrders.length} selected`
+                ? `${selectedOrders.length} selected across all pages`
                 : `Select orders for bulk actions`
               }
             </span>
@@ -789,7 +949,7 @@ export const OrderList: React.FC<OrderListProps> = ({
             </button>
           </div>
         ) : (
-          filteredAndSortedOrders.map((order) => (
+          paginatedOrders.map((order) => (
           <div
             key={order.id}
             className={`bg-white p-6 pl-12 rounded-lg shadow-sm border transition-colors relative ${
@@ -835,11 +995,11 @@ export const OrderList: React.FC<OrderListProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 {/* Edit Button */}
-                {db.canEditOrder(order.id, currentUser.role) && (
+                {supabaseAuth.canEditOrder(order) && (
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      initiateEdit(order);
+                      await initiateEdit(order);
                     }}
                     className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors flex items-center"
                     title="Edit Order"
@@ -849,7 +1009,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                   </button>
                 )}
                 {/* Cancel Button */}
-                {db.canCancelOrder(order.id, currentUser.role, currentUser.id) && (
+                {supabaseAuth.canCancelOrder(order) && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -863,7 +1023,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                   </button>
                 )}
                 {order.status === "pending" &&
-                  auth.hasPermission(["Admin", "Manager"]) && (
+                  supabaseAuth.hasPermission(["Admin", "Manager"]) && (
                     <>
                       <button
                         onClick={(e) => {
@@ -886,7 +1046,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     </>
                   )}
                 {order.status === "approved" &&
-                  auth.hasPermission(["Admin", "Manager", "Inventory"]) && (
+                  supabaseAuth.hasPermission(["Admin", "Manager", "Inventory"]) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -898,7 +1058,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                     </button>
                   )}
                 {order.status === "dispatched" &&
-                  auth.hasPermission(["Admin", "Manager", "Inventory"]) && (
+                  supabaseAuth.hasPermission(["Admin", "Manager", "Inventory"]) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1023,265 +1183,79 @@ export const OrderList: React.FC<OrderListProps> = ({
         )}
       </div>
 
-      {/* Order Details Modal */}
-      {selectedOrder && !showApprovalModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-gray-900">
-                  Order Details
-                </h3>
-                <button
-                  onClick={() => setSelectedOrder(null)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Order Info Table */}
-              <table className="w-full mb-6 border border-gray-200 rounded-lg overflow-hidden">
-                <tbody>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-4 py-2 w-1/3 font-medium text-gray-700 border-b border-gray-200">
-                      Order ID
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200">
-                      #{selectedOrder.id}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                      Status
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                          selectedOrder.status
-                        )}`}
-                      >
-                        {getStatusIcon(selectedOrder.status)}
-                        <span className="ml-1">{selectedOrder.status}</span>
-                      </span>
-                    </td>
-                  </tr>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                      Customer
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200">
-                      {selectedOrder.customer_name}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                      Customer Type
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200 capitalize">
-                      {selectedOrder.customer_type}
-                    </td>
-                  </tr>
-                  <tr className="bg-gray-50">
-                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                      Created By
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200">
-                      {selectedOrder.created_by_name}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                      Created
-                    </th>
-                    <td className="px-4 py-2 border-b border-gray-200">
-                      {formatDate(selectedOrder.created_at)}
-                    </td>
-                  </tr>
-                  {selectedOrder.tracking_number && (
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-4 py-2 font-medium text-gray-700 border-b border-gray-200">
-                        Tracking Number
-                      </th>
-                      <td className="px-4 py-2 border-b border-gray-200 font-mono">
-                        {selectedOrder.tracking_number}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-
-              {/* Order Items Table */}
-              <h4 className="font-semibold text-gray-900 mb-2">Order Items</h4>
-              <div className="overflow-x-auto mb-6">
-                <table className="min-w-full border border-gray-200 rounded-lg">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Product
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
-                        Unit Price
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
-                        Quantity
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orderItems.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-t"
-                      >
-                        <td className="px-4 py-2 font-medium text-gray-900">
-                          {item.product_name}
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          ₦
-                          {item.unit_price.toLocaleString("en-NG", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          {item.quantity}
-                        </td>
-                        <td className="px-4 py-2 text-right font-semibold">
-                          ₦
-                          {item.total_price.toLocaleString("en-NG", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end items-center text-lg font-bold mb-6">
-                <span className="mr-2">Total Amount:</span>
-                <span className="text-blue-600">
-                  ₦
-                  {selectedOrder.total_amount.toLocaleString("en-NG", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-
-              {/* Status Sections */}
-              {selectedOrder.notes && (
-                <div className="mb-4">
-                  <h5 className="font-semibold text-gray-800 mb-1">Notes</h5>
-                  <div className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
-                    {selectedOrder.notes}
-                  </div>
-                </div>
-              )}
-              {selectedOrder.approved_by && (
-                <div className="mb-4">
-                  <h5 className="font-semibold text-green-700 mb-1">
-                    Approval
-                  </h5>
-                  <div className="text-sm text-green-800 bg-green-50 rounded-lg p-3">
-                    Approved by {selectedOrder.approved_by} on{" "}
-                    {formatDate(selectedOrder.approved_at!)}
-                  </div>
-                </div>
-              )}
-              {selectedOrder.dispatched_by && (
-                <div className="mb-4">
-                  <h5 className="font-semibold text-blue-700 mb-1">Dispatch</h5>
-                  <div className="text-sm text-blue-800 bg-blue-50 rounded-lg p-3">
-                    Dispatched by {selectedOrder.dispatched_by} on{" "}
-                    {formatDate(selectedOrder.dispatched_at!)}
-                    {selectedOrder.tracking_number && (
-                      <span className="block mt-1">
-                        Tracking:{" "}
-                        <span className="font-mono">
-                          {selectedOrder.tracking_number}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {selectedOrder.delivered_at && (
-                <div className="mb-4">
-                  <h5 className="font-semibold text-purple-700 mb-1">
-                    Delivery
-                  </h5>
-                  <div className="text-sm text-purple-800 bg-purple-50 rounded-lg p-3">
-                    Delivered on {formatDate(selectedOrder.delivered_at)}
-                    {selectedOrder.delivery_notes && (
-                      <span className="block mt-1">
-                        {selectedOrder.delivery_notes}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {selectedOrder.pod_image && (
-                <div className="mb-4">
-                  <h5 className="font-semibold text-gray-800 mb-1">
-                    Proof of Delivery
-                  </h5>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <img
-                      src={selectedOrder.pod_image}
-                      alt="Proof of Delivery"
-                      className="max-w-full h-auto rounded-lg"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                        (
-                          e.target as HTMLImageElement
-                        ).nextElementSibling!.textContent =
-                          "POD Image: " + selectedOrder.pod_image;
-                      }}
-                    />
-                    <p className="text-sm text-gray-600 mt-2 hidden"></p>
-                  </div>
-                </div>
-              )}
-              {/* Approve/Reject Buttons for Pending Orders */}
-              {selectedOrder.status === "pending" &&
-                auth.hasPermission(["Admin", "Manager"]) && (
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button
-                      onClick={() => initiateApproval(selectedOrder, "approve")}
-                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => initiateApproval(selectedOrder, "reject")}
-                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
-              {/* Dispatch Button for Approved Orders */}
-              {selectedOrder.status === "approved" &&
-                auth.hasPermission(["Admin", "Manager", "Inventory"]) && (
-                  <div className="flex justify-end gap-3 mt-6">
-                    <button
-                      onClick={() => initiateDispatch(selectedOrder)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                    >
-                      Dispatch
-                    </button>
-                  </div>
-                )}
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <span>Showing</span>
+            <span className="font-medium">{startIndex + 1}</span>
+            <span>to</span>
+            <span className="font-medium">{Math.min(endIndex, filteredAndSortedOrders.length)}</span>
+            <span>of</span>
+            <span className="font-medium">{filteredAndSortedOrders.length}</span>
+            <span>orders</span>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className={`flex items-center px-3 py-2 text-sm rounded-lg border transition-colors ${
+                currentPage === 1
+                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Previous
+            </button>
+            
+            <div className="flex items-center space-x-1">
+              {/* Page Numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else {
+                  // Show pages around current page
+                  const start = Math.max(1, currentPage - 2);
+                  const end = Math.min(totalPages, start + 4);
+                  const adjustedStart = Math.max(1, end - 4);
+                  pageNum = adjustedStart + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
             </div>
+            
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className={`flex items-center px-3 py-2 text-sm rounded-lg border transition-colors ${
+                currentPage === totalPages
+                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
           </div>
         </div>
       )}
+
 
       {/* Dispatch Modal */}
       {showDispatchModal && selectedOrder && (
@@ -1365,7 +1339,7 @@ export const OrderList: React.FC<OrderListProps> = ({
                         key={vehicle.id}
                         value={vehicle.id}
                       >
-                        {vehicle.name} ({vehicle.type}, {vehicle.license_plate})
+                        {vehicle.license_plate} ({vehicle.type})
                       </option>
                     ))}
                   </select>
@@ -1427,18 +1401,62 @@ export const OrderList: React.FC<OrderListProps> = ({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proof of Delivery Image URL *
+                    Proof of Delivery Image *
                   </label>
-                  <input
-                    type="url"
-                    value={podImage}
-                    onChange={(e) => setPodImage(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="https://example.com/pod-image.jpg"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Upload image to a service like Imgur and paste the URL here
-                  </p>
+                  
+                  {/* Image Preview */}
+                  {podImagePreview && (
+                    <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                      <img 
+                        src={podImagePreview} 
+                        alt="Proof of Delivery Preview" 
+                        className="w-full h-48 object-cover rounded-lg mb-2"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPodImagePreview(null);
+                          setPodImageFile(null);
+                          setPodImage("");
+                        }}
+                        className="text-sm text-red-600 hover:text-red-800 flex items-center"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Remove image
+                      </button>
+                    </div>
+                  )}
+                  
+                  {!podImagePreview && (
+                    <div className="space-y-3">
+                      {/* Upload Options */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* File Upload */}
+                        <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors">
+                          <div className="flex flex-col items-center">
+                            <Upload className="w-6 h-6 text-gray-400 mb-1" />
+                            <span className="text-sm text-gray-600">Upload File</span>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleFileUpload}
+                          />
+                        </label>
+                        
+                        {/* Camera Capture */}
+                        <button
+                          type="button"
+                          onClick={handleCameraCapture}
+                          className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors"
+                        >
+                          <Camera className="w-6 h-6 text-gray-400 mb-1" />
+                          <span className="text-sm text-gray-600">Take Photo</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

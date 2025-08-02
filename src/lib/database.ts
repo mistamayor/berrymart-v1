@@ -315,6 +315,24 @@ class DatabaseManager {
     return this.orderItems.filter(item => item.order_id === orderId);
   }
 
+  getOrdersContainingProduct(productId: number): { orders: SalesOrder[], orderItems: OrderItem[] } {
+    // Get all order items for this product
+    const productOrderItems = this.orderItems.filter(item => item.product_id === productId);
+    
+    // Get unique order IDs that contain this product
+    const orderIds = [...new Set(productOrderItems.map(item => item.order_id))];
+    
+    // Get the orders
+    const orders = this.orders
+      .filter(order => orderIds.includes(order.id))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    return {
+      orders,
+      orderItems: productOrderItems
+    };
+  }
+
   createOrder(order: Omit<SalesOrder, 'id' | 'created_at'>, items: Omit<OrderItem, 'id' | 'order_id'>[]): SalesOrder {
     const orderId = this.nextOrderId++;
     const newOrder: SalesOrder = {
@@ -488,7 +506,7 @@ class DatabaseManager {
     this.orderItems.push(newItem);
 
     // Update product stock
-    product.stock_quantity -= item.quantity;
+    product.stock_quantity = Math.max(0, product.stock_quantity - item.quantity);
 
     // Update order total
     this.recalculateOrderTotal(orderId);

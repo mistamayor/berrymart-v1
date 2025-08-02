@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Product } from "../types";
-import { db } from "../lib/database";
+import { supabaseDb } from "../lib/supabaseDatabase";
 import { Package, DollarSign, Hash, FileText, Boxes } from "lucide-react";
 
 interface ProductFormProps {
@@ -63,7 +63,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
       try {
@@ -81,10 +81,10 @@ export const ProductForm: React.FC<ProductFormProps> = ({
 
         if (product) {
           // Edit mode
-          result = db.updateProduct(product.id, productData);
+          result = await supabaseDb.updateProduct(product.id, productData);
         } else {
           // Create mode
-          result = db.createProduct(productData);
+          result = await supabaseDb.createProduct(productData);
         }
         onProductAdded(result);
         onClose();

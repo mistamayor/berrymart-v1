@@ -69,10 +69,14 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const getStockStatus = (quantity: number) => {
-  if (quantity === 0)
+const getStockStatus = (quantity: number, thresholds?: { critical: number; low: number }) => {
+  // Use configurable thresholds or fallback to defaults
+  const criticalThreshold = thresholds?.critical ?? 0;
+  const lowThreshold = thresholds?.low ?? 10;
+  
+  if (quantity <= criticalThreshold)
     return { color: "text-red-600", bg: "bg-red-100", label: "Out of Stock" };
-  if (quantity < 10)
+  if (quantity <= lowThreshold)
     return {
       color: "text-yellow-600",
       bg: "bg-yellow-100",
@@ -90,21 +94,33 @@ const ProductView: React.FC<ProductViewProps> = ({
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [showEditForm, setShowEditForm] = useState(false);
   const [productData, setProductData] = useState<Product>(product);
+  const [stockThresholds, setStockThresholds] = useState({ critical: 0, low: 10 });
 
   useEffect(() => {
-    // Get all order items for this product
-    const allOrders = db.getAllOrders();
-    const allOrderItems = allOrders.flatMap(order => 
-      db.getOrderItems(order.id).filter(item => item.product_id === product.id)
-    );
-    setOrderItems(allOrderItems);
-
-    // Get orders that contain this product
-    const ordersWithThisProduct = allOrders.filter(order =>
-      db.getOrderItems(order.id).some(item => item.product_id === product.id)
-    );
-    setOrders(ordersWithThisProduct);
+    try {
+      // Use the new efficient method to get orders and items for this product
+      const { orders: ordersWithProduct, orderItems: productOrderItems } = db.getOrdersContainingProduct(product.id);
+      
+      setOrders(ordersWithProduct);
+      setOrderItems(productOrderItems);
+    } catch (error) {
+      console.error('Error fetching orders for product:', error);
+      // Set empty arrays on error to prevent UI crashes
+      setOrders([]);
+      setOrderItems([]);
+    }
   }, [product.id]);
+
+  useEffect(() => {
+    try {
+      // Fetch configurable stock thresholds from database
+      const thresholds = db.getStockThresholds();
+      setStockThresholds(thresholds);
+    } catch (error) {
+      console.error('Error fetching stock thresholds:', error);
+      // Keep default thresholds on error
+    }
+  }, []);
 
   useEffect(() => {
     setProductData(product);
@@ -129,7 +145,7 @@ const ProductView: React.FC<ProductViewProps> = ({
     }
   };
 
-  const stockStatus = getStockStatus(productData.stock_quantity);
+  const stockStatus = getStockStatus(productData.stock_quantity, stockThresholds);
 
   // Calculate sales metrics
   const totalQuantitySold = orderItems

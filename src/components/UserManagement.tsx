@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { User } from "../types";
-import { db } from "../lib/database";
+import { supabaseDb } from "../lib/supabaseDatabase";
+import { supabaseAuth } from "../lib/supabaseAuth";
 import {
   Users,
   Plus,
@@ -11,8 +12,6 @@ import {
   Calendar,
   Search,
   X,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 
 interface UserManagementProps {
@@ -32,7 +31,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   // Filter users based on search term
   const filteredUsers = users.filter(
     (user) =>
-      user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -49,6 +49,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({
         return "bg-blue-100 text-blue-800";
       case "Inventory":
         return "bg-orange-100 text-orange-800";
+      case "DeliveryAgent":
+        return "bg-yellow-100 text-yellow-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -73,11 +75,15 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     setShowDeleteConfirm(user);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (showDeleteConfirm) {
-      db.deleteUser(showDeleteConfirm.id);
-      onUserChange();
-      setShowDeleteConfirm(null);
+      try {
+        await supabaseDb.deleteUser(showDeleteConfirm.id);
+        onUserChange();
+        setShowDeleteConfirm(null);
+      } catch (error) {
+        console.error('Error deleting user:', error);
+      }
     }
   };
 
@@ -125,14 +131,14 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Add User
+            Invite User
           </button>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {["Admin", "Manager", "Accounts", "Sales", "Inventory"].map((role) => (
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        {["Admin", "Manager", "Accounts", "Sales", "Inventory", "DeliveryAgent"].map((role) => (
           <div
             key={role}
             className="bg-white p-4 rounded-lg shadow-sm border border-gray-200"
@@ -204,7 +210,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {user.username}
+                          {user.first_name} {user.last_name}
                         </div>
                         <div className="text-sm text-gray-500 flex items-center">
                           <Mail className="w-3 h-3 mr-1" />
@@ -353,9 +359,7 @@ const UserForm: React.FC<UserFormProps> = ({
   onSave,
 }) => {
   const [formData, setFormData] = useState({
-    username: user?.username || "",
     email: user?.email || "",
-    password: "",
     role: user?.role || "Sales",
     is_active: user?.is_active ?? true,
     first_name: user?.first_name || "",
@@ -364,12 +368,12 @@ const UserForm: React.FC<UserFormProps> = ({
     phone: user?.phone || "",
     manager_id: user?.manager_id ?? null,
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [managerSearch, setManagerSearch] = useState("");
   const [showManagerDropdown, setShowManagerDropdown] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const roles = ["Admin", "Manager", "Accounts", "Sales", "Inventory"];
+  const roles = ["Admin", "Manager", "Accounts", "Sales", "Inventory", "DeliveryAgent"];
 
   const filteredManagers = users.filter(
     (u) =>
@@ -382,66 +386,69 @@ const UserForm: React.FC<UserFormProps> = ({
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.username.trim()) newErrors.username = "Username is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     if (!formData.email.includes("@"))
       newErrors.email = "Valid email is required";
-    if (!user && !formData.password.trim())
-      newErrors.password = "Password is required";
-    if (formData.password && formData.password.length < 6)
-      newErrors.password = "Password must be at least 6 characters";
     if (!formData.first_name.trim())
       newErrors.first_name = "First name is required";
     if (!formData.last_name.trim())
       newErrors.last_name = "Last name is required";
-    if (!formData.department.trim())
+    if (!formData.department?.trim())
       newErrors.department = "Department is required";
-    if (!formData.phone.trim()) newErrors.phone = "Phone is required";
+    if (!formData.phone?.trim()) newErrors.phone = "Phone is required";
     // manager_id is optional
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
-      try {
-        if (user) {
-          // Update existing user
-          const updates: any = {
-            username: formData.username,
-            email: formData.email,
-            role: formData.role,
-            is_active: formData.is_active,
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            department: formData.department,
-            phone: formData.phone,
-            manager_id: formData.manager_id,
-          };
-          if (formData.password) {
-            updates.password = formData.password;
-          }
-          db.updateUser(user.id, updates);
-        } else {
-          // Create new user
-          db.createUser({
-            username: formData.username,
-            email: formData.email,
-            password: formData.password,
-            role: formData.role as any,
-            is_active: formData.is_active,
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            department: formData.department,
-            phone: formData.phone,
-            manager_id: formData.manager_id,
-          });
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    setErrors({});
+    
+    try {
+      if (user) {
+        // Update existing user
+        const updates: any = {
+          email: formData.email,
+          role: formData.role,
+          is_active: formData.is_active,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          department: formData.department,
+          phone: formData.phone,
+          manager_id: formData.manager_id,
+        };
+        await supabaseDb.updateUser(user.id, updates);
+      } else {
+        // Invite new user
+        console.log('Inviting user with data:', formData);
+        const invitationResult = await supabaseAuth.inviteUser(formData.email, {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          role: formData.role,
+          department: formData.department || undefined,
+          phone: formData.phone || undefined,
+          manager_id: formData.manager_id || undefined,
+        });
+        
+        if (!invitationResult.success) {
+          throw new Error(invitationResult.error);
         }
-        onSave();
-      } catch (error) {
-        console.error("Error saving user:", error);
+        
+        console.log('User invitation sent successfully:', invitationResult);
       }
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error("Error saving user:", error);
+      setErrors({ 
+        submit: error instanceof Error ? error.message : "Failed to save user. Please try again." 
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -471,10 +478,17 @@ const UserForm: React.FC<UserFormProps> = ({
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center">
-              <Users className="w-5 h-5 mr-2 text-blue-600" />
-              {user ? "Edit User" : "Add New User"}
-            </h2>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                <Users className="w-5 h-5 mr-2 text-blue-600" />
+                {user ? "Edit User" : "Invite New User"}
+              </h2>
+              {!user && (
+                <p className="text-sm text-gray-600 mt-1">
+                  An invitation email will be sent to the user to set up their account
+                </p>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 text-2xl"
@@ -629,24 +643,6 @@ const UserForm: React.FC<UserFormProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleInputChange}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.username ? "border-red-500" : "border-gray-300"
-                }`}
-                placeholder="Enter username"
-              />
-              {errors.username && (
-                <p className="text-red-500 text-sm mt-1">{errors.username}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Email
               </label>
               <input
@@ -661,37 +657,6 @@ const UserForm: React.FC<UserFormProps> = ({
               />
               {errors.email && (
                 <p className="text-red-500 text-sm mt-1">{errors.email}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password {user && "(leave blank to keep current)"}
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.password ? "border-red-500" : "border-gray-300"
-                  }`}
-                  placeholder={user ? "Enter new password" : "Enter password"}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
               )}
             </div>
             <div>
@@ -726,19 +691,29 @@ const UserForm: React.FC<UserFormProps> = ({
                 Active User
               </label>
             </div>
+            
+            {/* Error Display */}
+            {errors.submit && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-700 text-sm">{errors.submit}</p>
+              </div>
+            )}
+            
             <div className="flex space-x-3 pt-4">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {user ? "Update" : "Create"} User
+{isLoading ? (user ? "Updating..." : "Sending Invitation...") : (user ? "Update User" : "Send Invitation")}
               </button>
             </div>
           </form>

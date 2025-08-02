@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Customer } from "../types";
-import { db } from "../lib/database";
-import { User, Mail, Phone, MapPin, UserCheck } from "lucide-react";
-import { auth } from "../lib/auth";
+import { supabaseDb } from "../lib/supabaseDatabase";
+import { User, Mail, Phone, UserCheck } from "lucide-react";
+import { supabaseAuth } from "../lib/supabaseAuth";
 
 interface CustomerFormProps {
   onCustomerAdded: (customer: Customer) => void;
@@ -44,6 +44,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
   );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -70,43 +71,55 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateForm()) {
-      try {
-        let result: Customer;
-        if (customer) {
-          // Edit mode
-          const currentUser = auth.getAuthState().user;
-          // Compute what changed (simple summary)
-          let changes: string[] = [];
-          if (formData.name !== customer.name) changes.push("Name");
-          if (formData.email !== customer.email) changes.push("Email");
-          if (formData.phone !== customer.phone) changes.push("Phone");
-          if (formData.type !== customer.type) changes.push("Type");
-          if (
-            JSON.stringify(formData.addresses) !==
-            JSON.stringify(customer.addresses)
-          )
-            changes.push("Addresses");
-          const changeSummary =
-            changes.length > 0 ? changes.join(", ") : "No changes";
-          result = db.updateCustomer(customer.id, {
-            ...formData,
-            last_modified_by: currentUser
-              ? `${currentUser.first_name} ${currentUser.last_name}`
-              : "Unknown",
-            last_modified_changes: changeSummary,
-          });
-        } else {
-          // Create mode
-          result = db.createCustomer(formData);
-        }
-        onCustomerAdded(result);
-        onClose();
-      } catch (error) {
-        console.error("Error saving customer:", error);
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    setErrors({}); // Clear any previous errors
+    
+    try {
+      let result: Customer;
+      if (customer) {
+        // Edit mode
+        const currentUser = supabaseAuth.getAuthState().user;
+        // Compute what changed (simple summary)
+        const changes: string[] = [];
+        if (formData.name !== customer.name) changes.push("Name");
+        if (formData.email !== customer.email) changes.push("Email");
+        if (formData.phone !== customer.phone) changes.push("Phone");
+        if (formData.type !== customer.type) changes.push("Type");
+        if (
+          JSON.stringify(formData.addresses) !==
+          JSON.stringify(customer.addresses)
+        )
+          changes.push("Addresses");
+        const changeSummary =
+          changes.length > 0 ? changes.join(", ") : "No changes";
+        result = await supabaseDb.updateCustomer(customer.id, {
+          ...formData,
+          last_modified_by: currentUser
+            ? `${currentUser.first_name} ${currentUser.last_name}`
+            : "Unknown",
+          last_modified_changes: changeSummary,
+        });
+      } else {
+        // Create mode
+        result = await supabaseDb.createCustomer(
+          { name: formData.name, email: formData.email, phone: formData.phone, type: formData.type },
+          formData.addresses
+        );
       }
+      
+      onCustomerAdded(result);
+      onClose();
+    } catch (error) {
+      console.error("Error saving customer:", error);
+      setErrors({ 
+        submit: "Failed to save customer. Please try again." 
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -435,19 +448,31 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({
                 </div>
               )}
 
+            {/* Error Display */}
+            {errors.submit && (
+              <div className="text-red-600 text-sm text-center p-2 bg-red-50 rounded">
+                {errors.submit}
+              </div>
+            )}
+
             <div className="flex space-x-3 pt-4">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {customer ? "Save Changes" : "Add Customer"}
+                {isLoading 
+                  ? "Saving..." 
+                  : customer ? "Save Changes" : "Add Customer"
+                }
               </button>
             </div>
           </form>

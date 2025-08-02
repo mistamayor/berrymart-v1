@@ -1,5 +1,5 @@
 import { SalesOrder, OrderItem, Customer, Product, User } from '../types';
-import { db } from './database';
+import { supabaseDb } from './supabaseDatabase';
 
 export interface ExportOptions {
   format: 'csv' | 'excel' | 'pdf';
@@ -96,36 +96,36 @@ class OrderExportService {
     return filtered;
   }
 
-  prepareExportData(
+  async prepareExportData(
     orders: SalesOrder[], 
     options: ExportOptions, 
     permissions: ExportPermissions
-  ): any[] {
+  ): Promise<any[]> {
     const data: any[] = [];
 
-    orders.forEach(order => {
+    for (const order of orders) {
       if (options.includeItems) {
         // One row per order item
-        const orderItems = db.getOrderItems(order.id);
-        orderItems.forEach(item => {
-          const row = this.buildOrderItemRow(order, item, options, permissions);
+        const orderItems = await supabaseDb.getOrderItems(order.id);
+        for (const item of orderItems) {
+          const row = await this.buildOrderItemRow(order, item, options, permissions);
           data.push(row);
-        });
+        }
       } else {
         // One row per order
-        const row = this.buildOrderSummaryRow(order, options, permissions);
+        const row = await this.buildOrderSummaryRow(order, options, permissions);
         data.push(row);
       }
-    });
+    }
 
     return data;
   }
 
-  private buildOrderSummaryRow(
+  private async buildOrderSummaryRow(
     order: SalesOrder, 
     options: ExportOptions, 
     permissions: ExportPermissions
-  ): any {
+  ): Promise<any> {
     const row: any = {
       'Order ID': order.id,
       'Order Date': this.formatDate(order.created_at),
@@ -165,14 +165,18 @@ class OrderExportService {
     }
 
     if (options.includeCustomerDetails && permissions.canExportCustomerDetails) {
-      const customer = db.getAllCustomers().find(c => c.id === order.customer_id);
-      if (customer) {
-        row['Customer Email'] = customer.email;
-        row['Customer Phone'] = customer.phone;
-        const defaultAddress = customer.addresses.find(a => a.is_default);
-        if (defaultAddress) {
-          row['Customer Address'] = `${defaultAddress.address}, ${defaultAddress.city}, ${defaultAddress.state}`;
+      try {
+        const customer = await supabaseDb.getCustomerById(order.customer_id);
+        if (customer) {
+          row['Customer Email'] = customer.email;
+          row['Customer Phone'] = customer.phone;
+          const defaultAddress = customer.addresses.find(a => a.is_default);
+          if (defaultAddress) {
+            row['Customer Address'] = `${defaultAddress.address}, ${defaultAddress.city}, ${defaultAddress.state}`;
+          }
         }
+      } catch (error) {
+        console.error('Error fetching customer details for export:', error);
       }
     }
 
@@ -187,12 +191,12 @@ class OrderExportService {
     return row;
   }
 
-  private buildOrderItemRow(
+  private async buildOrderItemRow(
     order: SalesOrder, 
     item: OrderItem, 
     options: ExportOptions, 
     permissions: ExportPermissions
-  ): any {
+  ): Promise<any> {
     const row: any = {
       'Order ID': order.id,
       'Order Date': this.formatDate(order.created_at),
@@ -207,9 +211,13 @@ class OrderExportService {
     };
 
     // Add product SKU if available
-    const product = db.getAllProducts().find(p => p.id === item.product_id);
-    if (product) {
-      row['Product SKU'] = product.sku;
+    try {
+      const product = await supabaseDb.getProductById(item.product_id);
+      if (product) {
+        row['Product SKU'] = product.sku;
+      }
+    } catch (error) {
+      console.error('Error fetching product details for export:', error);
     }
 
     if (permissions.canExportUserData) {
@@ -238,7 +246,7 @@ class OrderExportService {
   ): Promise<Blob> {
     const permissions = this.getExportPermissions(user.role);
     const filteredOrders = this.filterOrdersByPermissions(orders, user, permissions);
-    const data = this.prepareExportData(filteredOrders, options, permissions);
+    const data = await this.prepareExportData(filteredOrders, options, permissions);
 
     if (data.length === 0) {
       throw new Error('No data to export');

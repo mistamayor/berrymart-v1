@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Package,
   User,
-  DollarSign,
   Loader,
 } from "lucide-react";
 

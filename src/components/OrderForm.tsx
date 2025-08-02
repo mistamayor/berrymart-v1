@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Customer, Product, SalesOrder, OrderItem } from "../types";
-import { db } from "../lib/database";
+import { supabaseDb } from "../lib/supabaseDatabase";
 import {
   ShoppingCart,
   User,
@@ -71,6 +71,23 @@ export const OrderForm: React.FC<OrderFormProps> = ({
   const addToCart = () => {
     if (!selectedCustomer || !selectedProduct) return;
 
+    // Check stock availability
+    const existingItemInCart = cart.find(item => item.product.id === selectedProduct.id);
+    const currentCartQuantity = existingItemInCart ? existingItemInCart.quantity : 0;
+    const totalRequestedQuantity = currentCartQuantity + quantity;
+
+    if (totalRequestedQuantity > selectedProduct.stock_quantity) {
+      const available = selectedProduct.stock_quantity - currentCartQuantity;
+      setErrors(prev => ({
+        ...prev,
+        stock: `Insufficient stock! Only ${available} items available (${currentCartQuantity} already in cart)`
+      }));
+      return;
+    }
+
+    // Clear any previous stock errors
+    setErrors(prev => ({ ...prev, stock: "" }));
+
     const unitPrice = getPrice(selectedProduct, selectedCustomer.type);
     const totalPrice = unitPrice * quantity;
 
@@ -131,6 +148,22 @@ export const OrderForm: React.FC<OrderFormProps> = ({
       return;
     }
 
+    // Find the product to check stock
+    const cartItem = cart.find(item => item.product.id === productId);
+    if (!cartItem) return;
+
+    // Check if new quantity exceeds available stock
+    if (newQuantity > cartItem.product.stock_quantity) {
+      setErrors(prev => ({
+        ...prev,
+        stock: `Cannot update quantity. Only ${cartItem.product.stock_quantity} items available for ${cartItem.product.name}`
+      }));
+      return;
+    }
+
+    // Clear stock error if update is valid
+    setErrors(prev => ({ ...prev, stock: "" }));
+
     const updatedCart = cart.map((item) => {
       if (item.product.id === productId) {
         return {
@@ -155,11 +188,23 @@ export const OrderForm: React.FC<OrderFormProps> = ({
     if (cart.length === 0)
       newErrors.cart = "Please add at least one item to the cart";
 
+    // Validate stock availability for all cart items
+    const stockIssues: string[] = [];
+    for (const item of cart) {
+      if (item.quantity > item.product.stock_quantity) {
+        stockIssues.push(`${item.product.name}: requested ${item.quantity}, available ${item.product.stock_quantity}`);
+      }
+    }
+
+    if (stockIssues.length > 0) {
+      newErrors.stock = `Stock issues: ${stockIssues.join('; ')}`;
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm() || !selectedCustomer) return;
 
@@ -185,7 +230,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({
         })
       );
 
-      const order = db.createOrder(orderData, orderItems);
+      const order = await supabaseDb.createOrder(orderData, orderItems);
       onOrderAdded(order);
       onClose();
     } catch (error) {
@@ -374,11 +419,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                       <input
                         type="number"
                         min="1"
+                        max={selectedProduct ? selectedProduct.stock_quantity : undefined}
                         value={quantity}
                         onChange={(e) =>
                           setQuantity(parseInt(e.target.value) || 1)
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={selectedProduct ? `Max: ${selectedProduct.stock_quantity}` : "1"}
                       />
                     </div>
 
@@ -501,6 +548,9 @@ export const OrderForm: React.FC<OrderFormProps> = ({
                   )}
                   {errors.cart && (
                     <p className="text-red-500 text-sm mt-1">{errors.cart}</p>
+                  )}
+                  {errors.stock && (
+                    <p className="text-red-500 text-sm mt-1">{errors.stock}</p>
                   )}
                 </div>
 

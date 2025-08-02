@@ -81,29 +81,30 @@ export interface PricingTier {
 export interface TransportVehicle {
   id: number;
   type: 'van' | 'truck';
-  name: string;
   license_plate: string;
   capacity: number;
   status: 'active' | 'maintenance' | 'retired';
-  assigned_agent_id?: number;
-  notes?: string;
+  assigned_agent_id?: number | null;
+  assigned_agent_name?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface User {
   id: number;
-  username: string;
   email: string;
-  password: string;
-  role: 'Admin' | 'Management' | 'Accounts' | 'Manager' | 'Sales' | 'Inventory' | 'DeliveryAgent';
+  role: 'Admin' | 'Manager' | 'Accounts' | 'Sales' | 'Inventory' | 'DeliveryAgent';
   is_active: boolean;
   created_at: string;
-  last_login?: string;
+  updated_at: string;
+  last_login?: string | null;
   first_name: string;
   last_name: string;
-  department: string;
-  phone: string;
-  manager_id: number | null;
-  vehicle_id?: number | null;
+  department?: string | null;
+  phone?: string | null;
+  profile_picture?: string | null;
+  bio?: string | null;
+  manager_id?: number | null;
 }
 
 export interface AuthState {
@@ -125,8 +126,25 @@ export interface StockAlert {
 }
 
 export interface StockThreshold {
-  low_stock: number;
-  critical_stock: number;
+  critical: number;
+  low: number;
+}
+
+export interface StockSettings {
+  thresholds: {
+    critical_stock: number;
+    low_stock: number;
+  };
+  behavior: {
+    prevent_overselling: boolean;
+    auto_generate_alerts: boolean;
+    show_stock_in_orders: boolean;
+  };
+  notifications: {
+    notify_on_low_stock: boolean;
+    notify_on_critical_stock: boolean;
+    notify_on_out_of_stock: boolean;
+  };
 }
 
 export interface OrderEditPermissions {

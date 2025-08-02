@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Supabase Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .log { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0; max-height: 400px; overflow-y: auto; font-family: monospace; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Quick Supabase Connection Test</h1>
+        <p>This will test your exact credentials from the .env.local file</p>
+        
+        <button onclick="testConnection()">Test Connection</button>
+        <button onclick="createAdminUser()">Create Admin User</button>
+        <button onclick="testLogin()">Test Login</button>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        // Your exact credentials from .env.local
+        const SUPABASE_URL = 'https://rgvioxwqhestgxbboitc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJndmlveHdxaGVzdGd4YmJvaXRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM1MzQxODQsImV4cCI6MjA2OTExMDE4NH0.4TGn4vZJdXA1DkVMuJKcbEiTk5hbB49YIAtM4LLrKvw';
+        
+        const { createClient } = supabase;
+        const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            logDiv.innerHTML += `<div class="${className}"><strong>[${timestamp}]</strong> ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        async function testConnection() {
+            log('🔄 Testing Supabase connection...');
+            
+            try {
+                // Test basic connection
+                const { data, error } = await client
+                    .from('users')
+                    .select('count(*)', { count: 'exact' })
+                    .limit(1);
+                
+                if (error) {
+                    log(`❌ Connection failed: ${error.message}`, 'error');
+                    return false;
+                }
+                
+                log('✅ Connection successful!', 'success');
+                log(`📊 Users table accessible`, 'success');
+                return true;
+                
+            } catch (error) {
+                log(`❌ Connection error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        async function createAdminUser() {
+            log('🔄 Creating admin user...');
+            
+            const email = 'admin@berrymart.com';
+            const password = 'Admin123!';
+            
+            try {
+                // Step 1: Create auth user
+                log('Creating auth account...');
+                const { data: authData, error: authError } = await client.auth.signUp({
+                    email: email,
+                    password: password
+                });
+                
+                if (authError) {
+                    log(`❌ Auth creation failed: ${authError.message}`, 'error');
+                    return;
+                }
+                
+                log('✅ Auth account created', 'success');
+                
+                // Step 2: Create user record
+                log('Creating user record...');
+                const { data: userData, error: dbError } = await client
+                    .from('users')
+                    .insert({
+                        email: email,
+                        first_name: 'Admin',
+                        last_name: 'User',
+                        role: 'Admin',
+                        is_active: true,
+                        department: 'Administration',
+                        phone: null,
+                        manager_id: null
+                    })
+                    .select()
+                    .single();
+                
+                if (dbError) {
+                    log(`❌ Database record failed: ${dbError.message}`, 'error');
+                    return;
+                }
+                
+                log('✅ User record created', 'success');
+                log(`📧 Credentials: ${email} / ${password}`, 'success');
+                log('🎉 Admin user ready to use!', 'success');
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLogin() {
+            log('🔄 Testing login...');
+            
+            const email = 'admin@berrymart.com';
+            const password = 'Admin123!';
+            
+            try {
+                // Test auth
+                const { data: authData, error: authError } = await client.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                if (authError) {
+                    log(`❌ Login failed: ${authError.message}`, 'error');
+                    return;
+                }
+                
+                log('✅ Auth successful', 'success');
+                
+                // Test user lookup
+                const { data: userData, error: userError } = await client
+                    .from('users')
+                    .select('*')
+                    .eq('email', email)
+                    .single();
+                
+                if (userError) {
+                    log(`❌ User lookup failed: ${userError.message}`, 'error');
+                    return;
+                }
+                
+                log('✅ User found in database', 'success');
+                log(`👤 User: ${userData.first_name} ${userData.last_name} (${userData.role})`, 'success');
+                log('🎉 Login flow complete!', 'success');
+                
+                // Sign out
+                await client.auth.signOut();
+                log('🚪 Signed out', 'success');
+                
+            } catch (error) {
+                log(`❌ Login error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test connection on load
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Ready to test with your Supabase credentials');
+            testConnection();
+        });
+    </script>
+</body>
+</html>

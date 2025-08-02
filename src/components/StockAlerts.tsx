@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { StockAlert, StockThreshold } from "../types";
-import { db } from "../lib/database";
-import { auth } from "../lib/auth";
+import { supabaseDb } from "../lib/supabaseDatabase";
+import { supabaseAuth } from "../lib/supabaseAuth";
 import {
   AlertTriangle,
   XCircle,
@@ -75,52 +75,81 @@ const formatDate = (dateString: string) => {
 export const StockAlerts: React.FC<StockAlertsProps> = ({ onClose, compact = false }) => {
   const [alerts, setAlerts] = useState<StockAlert[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [thresholds, setThresholds] = useState<StockThreshold>({ low_stock: 10, critical_stock: 5 });
-  const [tempThresholds, setTempThresholds] = useState<StockThreshold>({ low_stock: 10, critical_stock: 5 });
+  const [thresholds, setThresholds] = useState<StockThreshold>({ low: 10, critical: 5 });
+  const [tempThresholds, setTempThresholds] = useState<StockThreshold>({ low: 10, critical: 5 });
 
   useEffect(() => {
     loadAlerts();
     loadThresholds();
   }, []);
 
-  const loadAlerts = () => {
-    if (compact) {
-      setAlerts(db.getActiveStockAlerts().slice(0, 5)); // Show only top 5 for dashboard
-    } else {
-      setAlerts(db.getAllStockAlerts());
+  const loadAlerts = async () => {
+    try {
+      const allAlerts = await supabaseDb.getAllStockAlerts();
+      const activeAlerts = allAlerts.filter(alert => !alert.acknowledged);
+      if (compact) {
+        setAlerts(activeAlerts.slice(0, 5)); // Show only top 5 for dashboard
+      } else {
+        setAlerts(allAlerts);
+      }
+    } catch (error) {
+      console.error('Error loading alerts:', error);
+      setAlerts([]);
     }
   };
 
-  const loadThresholds = () => {
-    const currentThresholds = db.getStockThresholds();
-    setThresholds(currentThresholds);
-    setTempThresholds(currentThresholds);
+  const loadThresholds = async () => {
+    try {
+      const currentThresholds = await supabaseDb.getStockThresholds();
+      setThresholds(currentThresholds);
+      setTempThresholds(currentThresholds);
+    } catch (error) {
+      console.error('Error loading thresholds:', error);
+      // Use defaults if error
+      const defaultThresholds = { low: 10, critical: 5 };
+      setThresholds(defaultThresholds);
+      setTempThresholds(defaultThresholds);
+    }
   };
 
-  const canManageInventory = auth.hasPermission(["Admin", "Manager", "Inventory"]);
+  const canManageInventory = supabaseAuth.hasPermission(["Admin", "Manager", "Inventory"]);
 
-  const handleAcknowledgeAlert = (alertId: number) => {
-    const currentUser = auth.getAuthState().user;
+  const handleAcknowledgeAlert = async (alertId: number) => {
+    const currentUser = supabaseAuth.getAuthState().user;
     if (!currentUser) return;
 
-    const success = db.acknowledgeStockAlert(
-      alertId, 
-      `${currentUser.first_name} ${currentUser.last_name}`
-    );
-    
-    if (success) {
-      loadAlerts();
+    try {
+      const success = await supabaseDb.acknowledgeStockAlert(
+        alertId, 
+        `${currentUser.first_name} ${currentUser.last_name}`
+      );
+      
+      if (success) {
+        await loadAlerts();
+      } else {
+        console.error('Failed to acknowledge stock alert');
+        // You could add a toast notification here
+      }
+    } catch (error) {
+      console.error('Error acknowledging stock alert:', error);
+      // You could add a toast notification here for user feedback
     }
   };
 
-  const handleUpdateThresholds = () => {
-    db.updateStockThresholds(tempThresholds);
-    setThresholds(tempThresholds);
-    setShowSettings(false);
-    
-    // Regenerate alerts with new thresholds
-    db.generateStockAlerts();
-    loadAlerts();
+  const handleUpdateThresholds = async () => {
+    try {
+      await supabaseDb.updateStockThresholds(tempThresholds);
+      setThresholds(tempThresholds);
+      setShowSettings(false);
+      
+      // Regenerate alerts with new thresholds
+      await supabaseDb.generateStockAlerts();
+      await loadAlerts();
+    } catch (error) {
+      console.error('Error updating stock thresholds:', error);
+      // Keep settings modal open on error and provide user feedback
+      // You could add a toast notification here for user feedback
+    }
   };
 
   const activeAlerts = alerts.filter(alert => !alert.acknowledged);
@@ -236,10 +265,10 @@ export const StockAlerts: React.FC<StockAlertsProps> = ({ onClose, compact = fal
                   <input
                     type="number"
                     min="1"
-                    value={tempThresholds.low_stock}
+                    value={tempThresholds.low}
                     onChange={(e) => setTempThresholds(prev => ({
                       ...prev,
-                      low_stock: parseInt(e.target.value) || 10
+                      low: parseInt(e.target.value) || 10
                     }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -252,11 +281,11 @@ export const StockAlerts: React.FC<StockAlertsProps> = ({ onClose, compact = fal
                   <input
                     type="number"
                     min="0"
-                    max={tempThresholds.low_stock - 1}
-                    value={tempThresholds.critical_stock}
+                    max={tempThresholds.low - 1}
+                    value={tempThresholds.critical}
                     onChange={(e) => setTempThresholds(prev => ({
                       ...prev,
-                      critical_stock: parseInt(e.target.value) || 5
+                      critical: parseInt(e.target.value) || 5
                     }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -325,7 +354,7 @@ export const StockAlerts: React.FC<StockAlertsProps> = ({ onClose, compact = fal
                             <p className="text-sm text-gray-600 mb-2">
                               {alert.alert_level === "out_of_stock" 
                                 ? "Product is completely out of stock" 
-                                : `Only ${alert.current_stock} units remaining (threshold: ${alert.threshold})`}
+                                : `Only ${alert.current_stock} units remaining`}
                             </p>
                             <p className="text-xs text-gray-500">
                               Alert created: {formatDate(alert.created_at)}
@@ -370,7 +399,7 @@ export const StockAlerts: React.FC<StockAlertsProps> = ({ onClose, compact = fal
                         </span>
                       </div>
                       <div className="text-xs text-gray-500">
-                        Acknowledged by {alert.acknowledged_by} on {formatDate(alert.acknowledged_at!)}
+                        Acknowledged by {alert.acknowledged_by}{alert.acknowledged_at ? ` on ${formatDate(alert.acknowledged_at)}` : ''}
                       </div>
                     </div>
                   </div>
